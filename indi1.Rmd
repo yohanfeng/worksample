@@ -1,0 +1,1036 @@
+---
+institute: "OverDrive"
+output: 
+  xaringan::moon_reader:
+    seal: FALSE
+    includes: 
+      after_body: insert-logo.html
+    lib_dir: libs
+    # yolo: true
+    css: ["default", "./my-theme2.css"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+layout: true
+
+<div class="my-footer"><span> OverDrive Confidential: Internal Use Only
+</span></div> 
+
+---
+
+class: center, middle
+
+
+<br />
+ <span style="color:white"> <font size="9">**Lead Activities Analysis**</span></font>
+ <br />
+ <span style="color:white"> <font size="6">** **</span></font>
+ <br />
+<font size="5">
+August 8, 2022
+</font>
+<br />
+<font size="5">
+Hao Feng
+</font>
+<br />
+<font size="5">
+Business Systems & Analytics
+</font>
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment = NA)
+knitr::opts_knit$set(root.dir = "C:/teporaryFiles/indi")
+options(scipen = 999)
+options(cache = TRUE)
+```
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+require(ggplot2); require(tidyr); library(plyr); require(dplyr); require(RODBC); require(kableExtra); require(pander); require(lubridate); require(cowplot); require(data.table); require(knitr);  require(gridExtra); require(openxlsx); require(scales);
+require(wordcloud); require(tm); require(rpart); require(rpart.plot)
+
+```
+
+
+
+```{r echo=FALSE}
+cn1 <- odbcDriverConnect('driver={SQL Server};server=reportDB;database=master;trusted_connection=true')
+```
+
+
+
+
+```{r echo=FALSE}
+
+# #cs1 <- sqlQuery(cn,
+# #                         paste("
+# 
+# #DECLARE 
+# # @CRID INT --= 612
+# #, @StartDate DATE = '03-01-2022'
+# #, --@EndDate DATE = GETDATE() --GETDATE() = Today
+# #   @EndDate DATE = '06-01-2022' --GETDATE() = Today
+# 
+# #--Delete purchases if it exists
+# #IF OBJECT_ID('tempdb.dbo.#purchases') IS NOT NULL
+# 	DROP TABLE #purchases
+# 
+# --purchase orders
+# SELECT
+# 	dcc.CR_ID_INT__c AS CRID
+# 	, [Purchase Type] = 'Purchase Orders'
+# 	--,[Year] = YEAR(lpor.lporActualAddDate)
+# 	,[Platform] = dcc.Platform_Type__c
+# 	,SpendUSD = SUM(lpod.lpodTotalPriceUSD)
+# 	,CAST(lpor.lporActualAddDate AS DATE) AS DayDate
+# INTO #purchases
+# FROM contentReserve.dbo.LibraryPurchaseOrder lpor
+# INNER JOIN contentReserve.dbo.LibraryPurchaseOrderDetail lpod
+# 	ON lpor.lporPORecordID = lpod.lporPORecordID
+# --INNER JOIN #titles t
+# --	ON lpod.coinCrossRefID = t.CrossRefID
+# INNER JOIN sf_mirror.dbo.Digital_Collection__c dcc
+# 	ON lpor.acacAccessID = dcc.CR_ID_INT__c
+# WHERE
+# 	--YEAR(lpor.lporActualAddDate) BETWEEN 2018 AND 2021
+# 	CAST(lpor.lporActualAddDate AS DATE) BETWEEN @StartDate AND @EndDate
+# 	--AND dcc.Platform_Type__c IN ('DLR','CDL')
+# 	--AND dcc.CR_ID_INT__c=@CRID
+# GROUP BY
+# 	dcc.CR_ID_INT__c
+# 	,CAST(lpor.lporActualAddDate AS DATE)
+# 	,dcc.Platform_Type__c
+# 
+# UNION
+# 
+# --subscriptions
+# SELECT
+# 	dcc.CR_ID_INT__c AS CRID
+# 	, [Purchase Type] = 'Subscriptions'
+# 	--,[Year] = YEAR(psl.psliActualAddDate)
+# 	,[Platform] = dcc.Platform_Type__c	
+# 	,SpendUSD = SUM(ROUND(psl.psliSubscriptionCost * ((100 - psdiDiscount) / 100), 2)/ sc.Units)
+# 	,CAST(psl.psliActualAddDate AS DATE) AS DayDate
+# FROM contentReserve.dbo.PublisherSubscriptionLibrary psl
+# INNER JOIN
+# (
+# 	SELECT	
+# 		Units = COUNT(1)
+# 		,psl.psliPublisherSubscriptionLibraryID
+# 	FROM contentReserve.dbo.PublisherSubscriptionLibrary psl
+# 	INNER JOIN contentReserve.dbo.PublisherSubscriptionLibraryTitle pslt
+# 		ON psl.psliPublisherSubscriptionLibraryID = pslt.psliPublisherSubscriptionLibraryID
+# 	GROUP BY
+# 		psl.psliPublisherSubscriptionLibraryID
+# )sc
+# 	ON psl.psliPublisherSubscriptionLibraryID = sc.psliPublisherSubscriptionLibraryID
+# INNER JOIN contentReserve.dbo.PublisherSubscriptionLibraryTitle pslt
+# 	ON psl.psliPublisherSubscriptionLibraryID = pslt.psliPublisherSubscriptionLibraryID
+# --INNER JOIN #titles t
+# --	ON pslt.coinCrossRefID = t.CrossRefID
+# INNER JOIN contentReserve.dbo.ListPurchaseOrderType lpot
+# 	ON psl.lpotTypeID = lpot.lpotTypeID
+# INNER JOIN sf_mirror.dbo.Digital_Collection__c dcc
+# 	ON psl.acacAccessID = dcc.CR_ID_INT__c
+# WHERE
+# 	CAST(psl.psliActualAddDate AS DATE) BETWEEN @StartDate AND @EndDate
+# 	--AND dcc.CR_ID_INT__c=@CRID
+# GROUP BY
+# 	dcc.CR_ID_INT__c
+# 	,CAST(psl.psliActualAddDate AS DATE)
+# 	,dcc.Platform_Type__c
+# 
+# UNION
+# 
+# --CPC
+# SELECT
+# 	dcc.CR_ID_INT__c AS CRID
+# 	,[Purchase Type] = 'CPC'
+# 	--,[Year] = YEAR(udl.udloDownloadLogDate)
+# 	,[Platform] = dcc.Platform_Type__c
+# 	,SpendUSD = SUM(udlf.udlfSrpAmountUSD)
+# 	,CAST(udl.udloDownloadLogDate AS DATE) AS DayDate
+# FROM contentReserve.dbo.UniqueDownloadLog udl
+# INNER JOIN contentReserve.dbo.UniqueDownloadLogFinance udlf
+# 	ON udl.udloDownloadID = udlf.udloDownloadID
+# INNER JOIN contentReserve.dbo.UniqueDownloadLogPerCirc udlpc
+# 	ON udl.udloDownloadID = udlpc.udloDownloadID
+# --INNER JOIN #titles t
+# --	ON udl.coinCrossRefID = t.CrossRefID
+# INNER JOIN sf_mirror.dbo.Digital_Collection__c dcc
+# 	ON udl.acacAccessIDRetailer = dcc.CR_ID_INT__c
+# WHERE
+# 	CAST(udl.udloDownloadLogDate AS DATE) BETWEEN @StartDate AND @EndDate
+# 	-- AND dcc.CR_ID_INT__c = @CRID
+# GROUP BY
+# 	dcc.CR_ID_INT__c
+# 	,CAST(udl.udloDownloadLogDate AS DATE)
+# 	,dcc.Platform_Type__c
+# 
+# UNION
+# 
+# -- adjustments
+# SELECT
+# 	dcc.CR_ID_INT__c AS CRID
+# 	,[Purchase Type] = 'Adjustments'
+# 	--,[Year] = YEAR(lpoda.lpodaAdjustmentDate)
+# 	,[Platform] = dcc.Platform_Type__c
+# 	,SpendUSD = -SUM(lpod.lpodTotalPriceUSD)
+# 	,CAST(lpoda.lpodaAdjustmentDate AS DATE) AS DayDate
+# FROM contentReserve.dbo.LibraryPurchaseOrder lpo
+# INNER JOIN contentReserve.dbo.LibraryPurchaseOrderDetail lpod
+# 	ON lpo.lporPORecordID = lpod.lporPORecordID
+# INNER JOIN contentReserve.dbo.LibraryPurchaseOrderDetailAdjustment lpoda
+# 	ON lpo.lporPORecordID = lpoda.lporPORecordID
+# 	AND lpod.coinReserveID = lpoda.coinReserveID
+# 	AND lpo.acacAccessID = lpoda.acacAccessID
+# --INNER JOIN #titles t
+# --	ON lpod.coinCrossRefID = t.CrossRefID
+# INNER JOIN sf_mirror.dbo.Digital_Collection__c dcc
+# 	ON lpo.acacAccessID = dcc.CR_ID_INT__c
+# WHERE
+# 	CAST(lpoda.lpodaAdjustmentDate AS DATE) BETWEEN @StartDate AND @EndDate
+# 	--AND dcc.CR_ID_INT__c=@CRID
+# GROUP BY
+# 	dcc.CR_ID_INT__c
+# 	,CAST(lpoda.lpodaAdjustmentDate AS DATE)
+# 	,dcc.Platform_Type__c
+# 
+# 
+# 
+# 
+# select *
+# from #purchases
+# --If all days needed for analysis/visuals, use dw.dbo.DimDate2 for scaffolding (aka use dimdate and left outer join to purchases based on date)!!
+# 
+# 
+# 
+# 
+# 
+# 
+# --Use to 'flatten' data to CRID/Date
+# SELECT CRID
+# , P.DayDate
+# , p.[Platform]
+# , COALESCE(SUM(CASE WHEN [Purchase Type] = 'Adjustments' THEN SpendUSD END),0) AS [Adjustments]
+# , COALESCE(SUM(CASE WHEN [Purchase Type] = 'CPC' THEN SpendUSD END),0) AS [CPC]
+# , COALESCE(SUM(CASE WHEN [Purchase Type] = 'Subscriptions' THEN SpendUSD END),0) AS [Subscriptions]
+# , COALESCE(SUM(CASE WHEN [Purchase Type] = 'Purchase Orders' THEN SpendUSD END),0) AS [PurchaseOrders]
+# , COALESCE(SUM(SpendUSD),0) AS [TotalSpend]
+# 
+# INTO #spend
+# FROM 
+# #purchases p
+# GROUP BY p.DayDate
+# 	,CRID
+# 	, p.[Platform]
+# ORDER BY p.DayDate
+# 	,CRID
+# 
+# 
+# 
+# select #spend.* ,
+# dc.Subscription_Tier__c,
+# dc.Region__c,
+# dc.Subregion__c,
+# dc.Days_Live__c
+# from
+# #spend
+# left join sf_mirror.dbo.Digital_Collection__c dc on dc.CR_ID__c = #spend.CRID
+# Order by DayDate 
+# 
+# " ))
+```
+
+
+```{r echo=FALSE}
+
+#setwd('C:/teporaryFiles/indi')
+
+#cs1 <- read.csv('indi1.csv')
+
+#cs1
+
+
+```
+
+
+
+```{r echo=FALSE}
+#cs2 <- cs1 %>% group_by(Platform, Date = as.Date(DayDate, "%m/%d/%Y")) %>% dplyr::summarise(TotalSpend=sum(TotalSpend), #TotalCPC=sum(CPC), TotalSubs=sum(Subscriptions), TotalPurchase=sum(PurchaseOrders))
+
+#cs2
+```
+
+
+```{r echo=FALSE}
+#cs3 <- cs2 %>% group_by(Platform) %>% dplyr::summarise(TotalSpend=sum(TotalSpend), TotalCPC=sum(TotalCPC), #TotalSubs=sum(TotalSubs), TotalPurchase=sum(TotalPurchase))
+
+#cs3
+
+
+#ggplot(cs3, aes_string(x = "Platform", y="TotalSpend")) + 
+#   geom_bar(position="stack",stat="identity") +
+#   geom_line(aes(x= "Platform", y="TotalCPC"))+
+#   geom_line(aes(x="Platform", y="TotalSubs"))
+# +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + scale_x_date(date_breaks = "1 year", date_labels =  "%Y")  + labs( y = "Checkouts", x = "Date")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+```
+
+
+```{r  echo=FALSE}
+```
+
+
+```{r echo=FALSE}
+# ggplot(cs3) + 
+#   geom_col(aes(x = Platform, y = TotalSpend), size = 1, color = "darkblue", fill = "white") +
+#   geom_line(aes(x = Platform, y = TotalCPC), size = 1.5, color="red", group = 1) + 
+#   geom_line(aes(x = Platform, y = TotalSubs), size = 1.5, color="black", group = 1) + 
+#   geom_line(aes(x= Platform, y = TotalPurchase), size = 1.5, color="yellow", group = 1)
+```
+
+
+```{r echo=FALSE}
+
+# ggplot(cs2 %>% filter(Platform %in% c("DLR","SDL")),aes(x=Date,y=)) + 
+#   geom_line(aes(group = CRID))+ geom_smooth(aes(group = 1/5), size = 1, method = "loess", color = "black") + 
+#   guides(colour=FALSE)+ facet_wrap(~ as.factor(Platform),scales = "free_x") +
+#   theme(text = element_text(size=16)) +
+#   labs(x = "Year Since Live",y = "Total Value",title= "Total Cumulative Value Over Lifetime",subtitle="DLR vs. SDL") +
+#   theme_grey()+ scale_x_continuous(breaks=c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16),minor_breaks = c(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16))
+
+```
+
+
+
+
+
+---
+## Purpose: 
+* Which channel/source/industry generate more leads
+* What factors impact on the leads converted or not 
+* Help the marketing team better targeting customers and campaigning 
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+cn <- odbcDriverConnect('driver={SQL Server};server=reportDB;database=sf_mirror;trusted_connection=true')
+
+Q3_2021 <- sqlQuery(cn,
+                         paste("
+select
+Background_Notes__c,
+Country,
+Industry,
+--CreatedById
+CAST (CreatedDate AS DATE) as CreatedDate,
+CAST (ConvertedDate AS DATE) as ConvertedDate,
+DATEDIFF(DAY, CAST(CreatedDate AS DATE) , CAST(ConvertedDate AS DATE)) as ConvertTime,
+Data_Quality_Description__c,
+Data_Quality_Score__c,
+LeadSource,
+Source__c,
+Status,
+IsConverted,
+IsUnreadByOwner,
+IsDeleted
+from sf_mirror.dbo.lead
+where CreatedDate >= CONVERT(datetime, '2021-07-01')
+  and CreatedDate < CONVERT(datetime, '2021-09-30')
+"))
+
+
+Q1_2021 <- sqlQuery(cn,
+                         paste("
+select
+Background_Notes__c,
+Country,
+Industry,
+--CreatedById
+CAST (CreatedDate AS DATE) as CreatedDate,
+CAST (ConvertedDate AS DATE) as ConvertedDate,
+DATEDIFF(DAY, CAST(CreatedDate AS DATE) , CAST(ConvertedDate AS DATE)) as ConvertTime,
+Data_Quality_Description__c,
+Data_Quality_Score__c,
+LeadSource,
+Source__c,
+Status,
+IsConverted,
+IsUnreadByOwner,
+IsDeleted
+from sf_mirror.dbo.lead
+where CreatedDate >= CONVERT(datetime, '2021-01-01')
+  and CreatedDate < CONVERT(datetime, '2021-03-30')
+"))
+
+
+Q3_2020 <- sqlQuery(cn,
+                         paste("
+select
+Background_Notes__c,
+Country,
+Industry,
+--CreatedById
+CAST (CreatedDate AS DATE) as CreatedDate,
+CAST (ConvertedDate AS DATE) as ConvertedDate,
+DATEDIFF(DAY, CAST(CreatedDate AS DATE) , CAST(ConvertedDate AS DATE)) as ConvertTime,
+Data_Quality_Description__c,
+Data_Quality_Score__c,
+LeadSource,
+Source__c,
+Status,
+IsConverted,
+IsUnreadByOwner,
+IsDeleted
+from sf_mirror.dbo.lead
+where CreatedDate >= CONVERT(datetime, '2020-07-01')
+  and CreatedDate < CONVERT(datetime, '2020-09-30')
+"))
+
+
+
+Q1_2020 <- sqlQuery(cn,
+                         paste("
+select
+Background_Notes__c,
+Country,
+Industry,
+--CreatedById
+CAST (CreatedDate AS DATE) as CreatedDate,
+CAST (ConvertedDate AS DATE) as ConvertedDate,
+DATEDIFF(DAY, CAST(CreatedDate AS DATE) , CAST(ConvertedDate AS DATE)) as ConvertTime,
+Data_Quality_Description__c,
+Data_Quality_Score__c,
+LeadSource,
+Source__c,
+Status,
+IsConverted,
+IsUnreadByOwner,
+IsDeleted
+from sf_mirror.dbo.lead
+where CreatedDate >= CONVERT(datetime, '2020-01-01')
+  and CreatedDate < CONVERT(datetime, '2020-03-30')
+"))
+
+
+Q3_2019 <- sqlQuery(cn,
+                         paste("
+select
+Background_Notes__c,
+Country,
+Industry,
+--CreatedById
+CAST (CreatedDate AS DATE) as CreatedDate,
+CAST (ConvertedDate AS DATE) as ConvertedDate,
+DATEDIFF(DAY, CAST(CreatedDate AS DATE) , CAST(ConvertedDate AS DATE)) as ConvertTime,
+Data_Quality_Description__c,
+Data_Quality_Score__c,
+LeadSource,
+Source__c,
+Status,
+IsConverted,
+IsUnreadByOwner,
+IsDeleted
+from sf_mirror.dbo.lead
+where CreatedDate >= CONVERT(datetime, '2019-07-01')
+  and CreatedDate < CONVERT(datetime, '2019-09-30')
+"))
+
+
+Q1_2019 <- sqlQuery(cn,
+                         paste("
+select
+Background_Notes__c,
+Country,
+Industry,
+--CreatedById
+CAST (CreatedDate AS DATE) as CreatedDate,
+CAST (ConvertedDate AS DATE) as ConvertedDate,
+DATEDIFF(DAY, CAST(CreatedDate AS DATE) , CAST(ConvertedDate AS DATE)) as ConvertTime,
+Data_Quality_Description__c,
+Data_Quality_Score__c,
+LeadSource,
+Source__c,
+Status,
+IsConverted,
+IsUnreadByOwner,
+IsDeleted
+from sf_mirror.dbo.lead
+where CreatedDate >= CONVERT(datetime, '2019-01-01')
+  and CreatedDate < CONVERT(datetime, '2019-03-30')
+"))
+
+```
+
+
+
+
+```{r}
+#### which channel/source/industry usually generate more leads
+#### what factors impact on the leads converted or not 
+
+Q3_2021$cohort <- "2021Q3"
+
+Q1_2021$cohort <- "2021Q1"
+
+Q3_2020$cohort <- "2020Q3"
+
+Q1_2020$cohort <- "2020Q1"
+
+Q3_2019$cohort <- "2019Q3"
+
+Q1_2019$cohort <- "2019Q1"
+
+df_total <- rbind(Q3_2021, Q1_2021, Q3_2020, Q1_2020, Q3_2019, Q1_2019)
+
+
+df_total$Industry <- ifelse (df_total$Industry == "Library", "Library", ifelse(df_total$Industry == "K-12 Education" ,"K-12 Education", ifelse(df_total$Industry == "Higher Education", "Higher Education", ifelse(df_total$Industry == "Other", "Other", "Profession"))))
+
+#df_total
+
+```
+
+---
+# Total Leads
+* Total Leads from 2019-2021 Q1 & Q3
+* 2020 Q3: School start year, begins remotely study
+
+
+```{r fig.height=5, fig.width=12}
+#### which channel/source/industry usually generate more leads
+#### what factor impacts on the leads converted or not  
+
+df_total1 <- df_total %>% group_by(cohort) %>% count(cohort)
+
+#df_total1
+
+ggplot(df_total1, aes(x = cohort, y = n)) +
+  geom_col(aes(group = 1), color = "black", fill = "#507f94") +
+  #geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1.5) +
+  theme_classic()  +
+  #geom_text(size = 5.5, fontface = "bold") +
+  xlab("Time") +
+  ylab("Total Leads") +
+  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 16)) 
+
+
+```
+
+---
+# Total Leads --- Industry
+* K-12 is highest, especially 2020-Q3
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+df_total2 <- df_total %>% group_by(cohort, Industry) %>% count(cohort)
+
+#df_total2
+
+ggplot(df_total2, aes(x = cohort, y = n, fill = Industry)) +
+  geom_col(aes(group = 1), color = "black") +
+  #geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1.5) +
+  theme_classic()  +
+  #geom_text(size = 5.5, fontface = "bold") +
+  xlab("Time") +
+  ylab("Total Leads") +
+  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 16)) 
+```
+
+
+---
+# Total Leads Sources
+* Most K-12 leads come from sora related activities 
+
+```{r echo=FALSE, fig.height=4, fig.width=13}
+
+df_total3 <- df_total %>% group_by(cohort, LeadSource) %>% count(cohort)
+
+#df_total3
+
+ggplot(df_total3, aes(x = cohort, y = n, fill = LeadSource)) +
+  geom_col(aes(group = 1), color = "black") +
+  #geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1.5) +
+  theme_classic()  +
+  #geom_text(size = 5.5, fontface = "bold") +
+  xlab("Time") +
+  ylab("Total Leads") +
+  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 16))
+
+
+
+```
+
+
+---
+# Converted or Not
+* Stable around 0.75 
+
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+###convention rate
+
+df_cont1 <- df_total %>% group_by(cohort) %>% summarise(ConventionRate = sum(IsConverted)/ (sum(IsConverted) + sum(IsDeleted) + sum(IsUnreadByOwner)))
+
+ggplot(df_cont1, aes(x = cohort, y = ConventionRate)) +
+  geom_col(aes(group = 1), color = "black", fill = "#507f94") +
+  #geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1.5) +
+  theme_classic()  +
+  #geom_text(size = 5.5, fontface = "bold") +
+  xlab("Cohort") +
+  ylab("Convention Rate") +
+  theme(axis.text = element_text(size = 14), axis.title = element_text(size = 16)) 
+
+```
+
+
+```{r echo=FALSE}
+##compare convented and non-convented difference
+
+df_total$LeadSource <- ifelse(df_total$LeadSource %like% "Web", "Web", ifelse(df_total$LeadSource %like% "Trade", "Trade Show", ifelse(df_total$LeadSource %like% "Sora", "Sora", ifelse(df_total$LeadSource %like% "Form", "Form", ifelse(df_total$LeadSource %like% "Card", "Card",ifelse(df_total$LeadSource %like% "Onboarding", "Onboarding", "other"))))))
+
+
+df_cont2 <- df_total[df_total$IsConverted == 1, ]
+
+#df_cont2
+
+df_cont3 <- df_total[df_total$IsConverted != 1, ]
+
+
+```
+
+
+---
+# Compare Convertion Situation based on LeadSource
+* Converted-- Sora, Web, Trade Show Perform well
+
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+df_cont2_1 <- df_cont2 %>% dplyr::group_by(LeadSource) %>% dplyr::count(cohort)
+
+df_cont3_1 <- df_cont3 %>% dplyr::group_by(LeadSource) %>% dplyr::count(cohort)
+#only2021_2
+
+ggplot(na.omit(df_cont2_1), aes(x=cohort, y=n, fill = LeadSource)) +
+geom_col(aes(group = 1), color = "black") +
+theme(legend.title= element_blank()) + labs( y = "Converted Volumn", x = "Cohort")
+
+
+```
+
+---
+# Compare Convertion Situation based on LeadSource
+* Non-Convered: Web, no Trade show
+
+
+```{r}
+
+ggplot(na.omit(df_cont3_1), aes(x=cohort, y=n, fill = LeadSource)) +
+geom_col(aes(group = 1), color = "black") +
+  theme(legend.title= element_blank()) + labs( y = "Non-Converted Volumn", x = "Cohort")
+
+```
+
+
+---
+# Compare Convertion Situation based on Industry
+* Non-Convered: Web, no Trade show
+
+```{r}
+
+df_cont2_2 <- df_cont2 %>% group_by(Industry) %>% dplyr::count(cohort)
+#df_cont2_2
+df_cont3_2 <- df_cont3 %>% group_by(Industry) %>% dplyr::count(cohort)
+#only2021_2
+
+cont2_2<- ggplot(na.omit(df_cont2_2), aes(x=cohort, y=n, fill = Industry)) +
+geom_col(aes(group = 1), color = "black")
+
+cont3_2 <- ggplot(na.omit(df_cont3_2), aes(x=cohort, y=n, fill = Industry)) +
+geom_col(aes(group = 1), color = "black")
+
+
+
+```
+
+---
+# Compare Convertion Situation based on Industry
+* Non-Convered: Web, no Trade show
+
+```{r echo=FALSE, fig.height=6, fig.width=12}
+####converted 
+
+df_total_1 <- df_total %>% group_by(Industry, Converted = as.factor(IsConverted)) %>% dplyr::count(as.factor(IsConverted))
+#df_total_1
+
+ggplot(df_total_1, aes(x= Converted, y=n, fill = Industry)) +
+geom_col(aes(group = 1), color = "black")
+
+```
+
+---
+# Compare Convertion Situation based on LeadSource
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+df_total_2 <- df_total %>% group_by(LeadSource, Converted = as.factor(IsConverted)) %>% dplyr::count(as.factor(IsConverted))
+
+ggplot(df_total_2, aes(x= Converted, y=n, fill = LeadSource)) +
+geom_col(aes(group = 1), color = "black")
+
+
+
+
+```
+
+
+---
+# Compare Convertion Situation based on Data Quality 
+
+```{r echo=FALSE, fig.height=5, fig.width=12, message=FALSE, warning=FALSE}
+
+df_total_3 <- df_total %>% group_by(Data_Quality_Description__c , Converted = as.factor(IsConverted)) %>%  dplyr::count(as.factor(IsConverted))
+
+#df_total_3
+
+ggplot(df_total_3, aes(x= Converted, y=n, fill = Data_Quality_Description__c)) +
+geom_col(aes(group = 1), color = "black")
+
+
+
+
+```
+
+---
+# Compare Convertion Situation based on Data Quality 
+
+```{r echo=FALSE, fig.height=5, fig.width=12, message=FALSE, warning=FALSE}
+
+ggplot(df_total_3, aes(x= Data_Quality_Description__c, y=n, fill = Converted)) +
+geom_col(aes(group = 1), color = "black")
+
+
+```
+
+```{r echo=FALSE}
+#df_total$Country <- ifelse(df_total$Country == "American Samoa" | df_total$Country == "CA" | df_total$Country == "Canada" |
+#                            df_total$Country == "CANADA" )
+
+#df_total_4 <- df_total %>% group_by(Country , Converted = as.factor(IsConverted)) %>%  dplyr::count(as.factor(IsConverted))
+
+#df_total_4
+
+
+
+#ggplot(df_total_3, aes(x= Data_Quality_Description__c, y=n, fill = Converted)) +
+#geom_col(aes(group = 1), color = "black")
+
+
+```
+
+
+
+
+---
+# Background Notes: The word customer left in the leads
+* It is an intial communication between the customers and us
+* We could get to know the customer more
+* Get well prepared when we reach out to them
+* Find potential rules behind the background notes
+
+---
+# Background Notes: Converted vs Non-Converted 
+
+
+```{r}
+
+df_total$Background_Notes__c <- ifelse(is.na(df_total$Background_Notes__c), "0", "1")
+
+df_total_5 <- df_total %>% group_by(Background_Notes__c, Converted = as.factor(IsConverted)) %>%  dplyr::count(as.factor(IsConverted))
+
+
+ggplot(df_total_5, aes(x= Background_Notes__c, y=n, fill = Converted)) +
+geom_col(aes(group = 1), color = "black")
+
+```
+
+
+
+
+```{r echo=FALSE}
+
+
+#drop na value
+
+#df_total <- na.omit(df_total)
+
+#summary(df_total)
+
+```
+
+
+```{r echo=FALSE}
+
+#step1 <- step(glm(IsConverted ~ as.factor(Background_Notes__c)+Data_Quality_Description__c+Data_Quality_Score__c+LeadSource+Industr#y, data=df_total),direction="both")
+   
+```
+
+
+```{r echo=FALSE}
+#df_total
+
+
+#lg1 <- glm(IsConverted ~ Data_Quality_Description__c + LeadSource + Industry, data=df_total)
+
+#summary(lg1)
+
+```
+
+
+
+
+```{r echo=FALSE}
+#####background notes, from the notes we got from the potential customers, we can get to know the customers better
+## and we can gain experience their level of interest, so that the marketing team can better target them and adjust thier strategy to reach out to them 
+
+#install.packages("tm")
+library(tm)
+
+docs <- Corpus(DirSource("C:/teporaryFiles/indi/note"))
+
+inspect(docs)
+
+
+##start processing
+docs <- tm_map(docs, removePunctuation)
+docs <- tm_map(docs, removeWords, c("\nNULL", "\n", "NULL", "the", "and", "for", "our", "have", "are", "with",
+                                    "would", "you", "can", "your", "about", "that", "this", "how"))
+
+tospace <- content_transformer(function(x, pattern) {return(gsub(pattern, "", x))})
+docs <- tm_map(docs, tospace, "\n")
+
+
+docs <- tm_map(docs, removeNumbers)
+docs <- tm_map(docs, content_transformer(tolower))
+
+
+
+
+```
+
+
+```{r echo=FALSE}
+
+
+# Build a term-document matrix
+docs1 <- TermDocumentMatrix(docs)
+docs_m <- as.matrix(docs1)
+# Sort by descearing value of frequency
+docs_v <- sort(rowSums(docs_m),decreasing=TRUE)
+docs_d <- data.frame(word = names(docs_v),freq=docs_v)
+# Display the top 5 most frequent words
+#head(docs_d, 10)
+
+
+
+```
+
+---
+# word cloud: Frequent Words appear in the background notes
+
+```{r echo=FALSE, fig.height=7, fig.width=10}
+
+#install.packages("wordcloud")
+library(wordcloud)
+
+#generate word cloud
+set.seed(1234)
+
+wordcloud(words = docs_d$word, freq = docs_d$freq, min.freq = 5,
+          max.words=100, random.order=FALSE, rot.per=0.40, 
+          colors=brewer.pal(8, "Dark2"))
+
+```
+
+
+---
+# Top Ten Most Frequent Words appear in Background Notes
+
+```{r echo=FALSE, fig.height=6, fig.width=12}
+
+# Plot the most frequent words
+barplot(docs_d[1:10,]$freq, las = 2, names.arg = docs_d[1:10,]$word,
+        col ="lightgreen", main ="Top 10 most frequent words",
+        ylab = "BackgroundWord frequencies")
+
+
+```
+
+
+
+```{r echo=FALSE}
+####contain specific words, the reason is that to if the customer leave specific words are more likely to be converted  as real customer
+
+df_total <- rbind(Q3_2021, Q1_2021, Q3_2020, Q1_2020, Q3_2019, Q1_2019)
+
+
+df_total$Industry <- ifelse (df_total$Industry == "Library", "Library", ifelse(df_total$Industry == "K-12 Education" ,"K-12 Education", ifelse(df_total$Industry == "Higher Education", "Higher Education", ifelse(df_total$Industry == "Other", "Other", "Profession"))))
+
+
+
+
+####replace sample
+df_total$Background_Notes__c <- ifelse(df_total$Background_Notes__c %like% "library", "library", ifelse(df_total$Background_Notes__c %like% "Library", "library", ifelse(df_total$Background_Notes__c %like% "overdrive", "overdrive", ifelse(df_total$Background_Notes__c %like% "OverDrive", "overdrive", ifelse(df_total$Background_Notes__c %like% "like", "like", ifelse(df_total$Background_Notes__c %like% "school", "school", ifelse(df_total$Background_Notes__c %like% "interest", "interest",  ifelse(df_total$Background_Notes__c %like% "public", "public",ifelse(df_total$Background_Notes__c %like% "books", "books", ifelse(df_total$Background_Notes__c %like% "information", "information", ifelse(df_total$Background_Notes__c %like% "access", "access", ifelse(df_total$Background_Notes__c %like% "thank","thank", "other"))))))))))))
+
+#library(dplyr)
+
+#df_total
+
+###select rows
+row1 <- df_total[df_total$Background_Notes__c %like% "library", ]
+row2 <- df_total[df_total$Background_Notes__c %like% "overdrive", ]
+row3 <- df_total[df_total$Background_Notes__c %like% "like", ]
+row4 <- df_total[df_total$Background_Notes__c %like% "school", ]
+row5 <- df_total[df_total$Background_Notes__c %like% "interest", ]
+row6 <- df_total[df_total$Background_Notes__c %like% "other", ]
+row7 <- df_total[is.na(df_total$Background_Notes__c), ]
+row8 <- df_total[df_total$Background_Notes__c %like% "public", ]
+row9 <- df_total[df_total$Background_Notes__c %like% "books", ]
+row10 <- df_total[df_total$Background_Notes__c %like% "information", ]
+row11 <- df_total[df_total$Background_Notes__c %like% "access", ]
+row12 <- df_total[df_total$Background_Notes__c %like% "thank", ]
+
+df_total7 <- rbind(row1, row2, row3, row4, row5, row8, row9, row10, row11, row12)
+```
+
+
+
+---
+# Convertion Situation based on Background Key Words
+
+```{r echo=FALSE, fig.height=6, fig.width=12}
+
+###visual stuff
+
+df_total_6 <- df_total7 %>% group_by(cohort, Background_Notes__c) %>% dplyr::summarise(TotalConverted = sum(IsConverted))
+
+
+
+ggplot(df_total_6, aes(x=cohort, y=TotalConverted, fill = Background_Notes__c), group = 1) +
+  geom_bar(stat = "identity", color="black")
+
+
+
+
+###logistic or decrison trees model 
+
+
+###
+
+
+###how to track leads
+
+
+
+```
+
+```{r echo=FALSE}
+#df_total7$IsConverted <- ifelse(df_total7$IsConverted == 1, "Yes", "No")
+
+```
+
+
+---
+# Compare Convertion Situation based on Key Words
+```{r echo=FALSE, fig.height=6, fig.width=12}
+df_total7$Convertedornot <- ifelse(df_total7$IsConverted == 1, "Yes", "No")
+
+df_total8 <- df_total7 %>% dplyr::group_by(Background_Notes__c, Convertedornot) %>% dplyr::count(Convertedornot)
+
+#df_total8
+
+ggplot(df_total8, aes(x=Background_Notes__c, y=n, fill = Convertedornot), group = 1) +
+  geom_bar(stat = "identity", color="black")
+```
+
+---
+# Comvertion Rate Based on Key words in Background Notes
+# Top: thank, information, like, interest above 75%
+
+```{r echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE}
+
+df_total9 <- df_total7 %>% dplyr::group_by(Background_Notes__c) %>% dplyr::summarise(total=sum(as.numeric(IsConverted)))
+
+df_total10 <- df_total7 %>% dplyr::group_by(Background_Notes__c) %>% dplyr::count(Background_Notes__c)
+
+#df_total10
+
+df_total11 <- df_total9
+df_total11$ratio <- df_total9$total/df_total10$n * 100
+
+#df_total11
+
+ggplot(df_total11, aes(x=Background_Notes__c, y=ratio)) +
+  geom_bar(stat = "identity", color = "black")
+  
+
+```
+
+
+---
+# Model: figure out factor influence on convertion 
+* Only Industry and Data Quality Score are significant
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+###logistic 
+#lg1 <- glm(IsConverted ~ Data_Quality_Score__c + Industry + Background_Notes__c + LeadSource,df_total7, family = "binomial")
+
+#summary(lg1)
+
+
+
+```
+
+
+---
+# Decistion Tree
+* Only Industry and Data Quality Score are significant
+```{r echo=FALSE, fig.height=6, fig.width=12, warning=FALSE}
+
+
+library(rpart)
+
+
+#install.packages("rpart.plot")
+library(rpart.plot)
+
+#df_total7
+
+df_total7_1 <- na.omit(df_total7)
+df_total7_2 <- df_total7[, c("IsConverted", "Data_Quality_Score__c", "Industry", "Background_Notes__c", "LeadSource","Data_Quality_Description__c")]
+
+df_total7_2
+
+df_total7_2[, "IsConverted"] <- as.factor(df_total7_2[, "IsConverted"])
+tree1 <- rpart(IsConverted ~ Industry + Background_Notes__c +LeadSource, data = df_total7_2, method = "class")
+
+#tree1
+
+rpart.plot(tree1)
+
+
+```
+
+
+
+
+
+

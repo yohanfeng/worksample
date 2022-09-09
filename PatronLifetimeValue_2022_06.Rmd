@@ -1,0 +1,1216 @@
+---
+title: "Patron Lifetime Value"
+author: "Katie Sterling and Claire Sonneborn"
+institute: "OverDrive"
+output:
+ xaringan::moon_reader:
+    seal: FALSE
+    includes: 
+      after_body: insert-logo.html
+    lib_dir: libs
+    css: ["default", "./my-theme.css"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+date: '2022-07-08'
+---
+
+layout: true
+
+<div class="my-footer"><span> OverDrive Confidential: Internal Use Only
+</span></div> 
+
+---
+
+class: inverse, center, middle
+background-image: url(OverDrive_Logo-2015_white-small.png)
+background-size: 20%
+background-position: 5% 95%
+
+
+<br />
+ <span style="color:white"> <font size="9">**Patron Lifetime Value**</span></font>
+ <br />
+ <span style="color:white"> <font size="6">** **</span></font>
+ <br />
+<font size="5">
+July 1, 2022
+</font>
+<br />
+<font size="5">
+Katie Sterling and Claire Sonneborn; Refreshed by Hao Feng
+</font>
+<br />
+<font size="5">
+Business Systems & Analytics
+</font>
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+```
+
+
+
+```{r required packages, echo=FALSE, message=FALSE,warning=FALSE}
+# common packages 
+require(ggplot2); require(tidyr); require(dplyr); require(RODBC); require(kableExtra); require(pander); require(lubridate);
+require(zoo); require(readr);
+require(knitr);  require(gridExtra); require(ggrepel); require(data.table);
+require(ggrepel)
+library("animation")
+
+setwd("V:/Business Systems & Analytics/Operations/Team Priorities and Quarterly Goals/20Q3 Work streams/Patron lifetime value/Final Analysis")
+```
+
+
+```{r overdrive colors, echo=FALSE,  warning=FALSE, message=FALSE}
+
+
+od_col <- c("#006693", #mid blue            #Cohort Value
+            "#74CEE2", #light blue          #Patron Value
+            "#EE523B", #salmon              #Checkout Value
+            "#0A2240", #navy
+            "#8EC549", #green               #Checkouts
+            "#A7A9AC", #gray                
+            "#231F20", #black(almost)       
+            "#507f94", #gray blue           #Content Spend  
+            "#8f3122", #dark red                  
+            "#4f8e9c") #lighter gray blue   #Patron Count
+
+
+```
+
+
+```{r load_data, echo=FALSE, warning=FALSE, message=FALSE}
+cs_c <- read.csv("2022-06ContentSpend.csv") %>% mutate(Date=as.Date(Date, "%m/%d/%Y"))
+
+cohort_start = as.Date("03/31/2015", "%m/%d/%Y")
+cs_c <-cs_c%>%
+  #rename(TotalCheckouts = checkouts, TotalContentSpend = spend, Date = LastDayOfQuarter) %>%
+  mutate(Cost = round(TotalContentSpend/TotalCheckouts, digits = 2),
+         datediff = 12 * (as.yearmon(Date) - as.yearmon(cohort_start))) %>%
+  subset(select = -year)
+
+
+
+cohorts <- read.csv("2022-06CohortUpdate.csv")
+
+cohorts$Cohort <- as.Date(cohorts$Cohort, "%m/%d/%Y")
+
+cohorts$Date <- as.Date(cohorts$Date, "%m/%d/%Y")
+```
+
+
+
+```{r join_tabs, echo = FALSE, warning = FALSE, message = FALSE}
+df <- left_join(cohorts, cs_c) %>%
+  mutate(Money = Cost * CountCheckout,
+         PercentOfQuarterCheckouts = CountCheckout * 100 / TotalCheckouts, 
+         CumulativeValue = ave(Money, Cohort, FUN = cumsum), 
+         CheckoutPerPatron = CountCheckout / CountPatron,
+         CumPercent = ave(PercentOfQuarterCheckouts, Date, FUN = cumsum))
+
+df$Cohort <- as.Date(df$Cohort, "%m/%d/%Y")
+df$Date <- as.Date(df$Date, "%m/%d/%Y")
+df <- df %>% mutate(Quarter = month(Cohort), 
+         age = round(12* (as.yearmon(Cohort)-
+as.yearmon(Date)),0), 
+         ValuePerPatron = Money / CountPatron) 
+
+#%>% filter_all(~ !is.na(.)) 
+
+df2 <- df %>%
+  group_by(Date) %>% 
+  summarize(MaxPercent = max(CumPercent))
+
+
+df <- left_join(df, df2, by = "Date") %>%
+  mutate(Post2015Percent = PercentOfQuarterCheckouts * 100 / MaxPercent,
+         CohortName = as.yearmon(Cohort))
+
+#df
+```
+
+---
+<br /> <br />
+# Purpose
+
+  * <font size = "6"> Discover the Lifetime Value of a Patron at OverDrive to better understand the relationships between Patrons, libraries, and OverDrive </font> <br />
+  * <font size = "6"> Understand the value that Patrons create for the OverDrive ecosystem </font> <br />
+
+---
+<br /> <br />
+# Presentation Topics
+
+  * <font size = "6"> Key Terms, Scope, and Assumptions </font> <br />
+  * <font size = "6"> Value of a Checkout </font> <br />
+  * <font size = "6"> Value of a Cohort </font> <br />
+  * <font size = "6"> Value of a Patron </font> <br />
+  * <font size = "6"> Patron Lifetime Value </font> <br />
+
+---
+<br /><br />
+# Key Terms, Scope, and Assumptions
+
+
+```{css echo=FALSE, warning=FALSE, message=FALSE}
+.right-column{
+  padding-top: 0;
+}
+```
+
+
+.left-column[
+
+<font size = "6"> **Key Terms** </font> <br />
+  * <font size = "5"> Patron </font> <br />
+  * <font size = "5"> Active Patron </font> <br />
+  * <font size = "5"> Cohort </font> <br />
+  * <font size = "5"> Content Spend </font> <br />
+  * <font size = "5"> Patron Lifetime Value </font> <br />
+  
+<font size = "4"> Definitions in appendix </font> <br />
+]
+
+.right-column[
+
+<font size = "6"> **Scope** </font> <br />
+  * <font size = "5"> Cohorts defined by quarter </font> <br />
+  * <font size = "5"> Data from 2015-Q1 to 2020-Q2 </font> <br />
+  * <font size = "5"> Limited to Public Library North America </font>  <br />
+  * <font size = "5"> Only gross value calculated </font>  <br />
+  
+<font size = "6"> **Assumptions** </font> <br />
+  * <font size = "5"> Checkouts represent demand </font> <br />
+  * <font size = "5"> Quarterly Cohorts are sufficent for observations </font> <br />
+  * <font size = "5"> Not considering complex costs </font>  <br />
+  * <font size = "5"> All calculated values are averages </font>  <br />
+  * <font size = "5"> 2020 data is included, but not representative of trends </font>  <br />
+
+]
+
+---
+class: inverse, left, middle
+<br /><br />
+<h2> What is the Value of a Checkout? </h2>
+
+---
+<br /><br />
+# Checkouts and Content Spend
+
+
+```{r ccs_graph, echo=FALSE, eval = TRUE, fig.width=18,fig.height=5, warning=FALSE, message=FALSE}
+temp7 <- cs_c %>%
+  mutate(numcoh = datediff + 1, 
+         coco = TotalCheckouts/numcoh, 
+         TotalCheckouts = TotalCheckouts / 1000000, 
+         TotalContentSpend = TotalContentSpend / 1000000)
+
+colors3 <- c("Content Spend\nin Millions of $" = "#507f94", 
+            "Checkouts\nin Millions" = "#8EC549")
+
+#install.packages("animation")
+#library("animation")
+
+ani1 <- ggplot(temp7) +
+  geom_line(aes(x = Date, y = TotalCheckouts, color = "Checkouts\nin Millions"), size = 1.5) + 
+  geom_line(aes(x = Date, y = TotalContentSpend, color = "Content Spend\nin Millions of $"), size = 1.5) + 
+  gganimate::transition_reveal(temp7$Date) + 
+  #geom_line(aes(x = Date, y = coco), color = "black") +
+  scale_color_manual(values = colors3) +
+  theme_classic() +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16)) +
+  ##coord_flip() +
+  ##gganimate::transition_manual(frames = as.factor(temp7$Date)) +
+  labs(y = "") 
+  ##gganimate::ease_aes('linear')
+
+gganimate::animate(ani1, end_pause =90, height = 400, width =600)
+
+
+```
+
+
+
+
+```{r cv_table, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE}
+cv_table <- cs_c %>%
+  select(Date, Cost) %>%
+  dplyr::rename(SpendPerCheckout = Cost) %>%
+  mutate(Date = as.yearmon(Date)) %>%
+  knitr::kable(digits = 2)
+
+#cv_table
+```
+
+
+---
+<br /><br />
+# Checkout Value 
+
+$Checkout Value = \frac{Content Spend} {Number of Checkouts}$
+
+
+```{r cv_graph, echo=FALSE, eval = TRUE, fig.width=18,fig.height=6, warning=FALSE, message=FALSE}
+
+ani2 <- ggplot(cs_c, aes(x = Date, y = Cost)) +
+  geom_line(aes(group = 1), color = "#EE523B",size = 1.5) +
+  gganimate::transition_reveal(cs_c$Date) +
+  #geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1.5) +
+  #theme_classic()  +
+  #geom_text(size = 5.5, fontface = "bold") +
+  xlab("Date") +
+  ylab("Spend per Checkount")
+  #theme(axis.text = element_text(size = 14), axis.title = element_text(size = 16)) 
+gganimate::animate(ani2, end_pause =90, height = 400, width =400)
+
+```
+
+---
+class: inverse, left, middle
+<br /><br />
+<h2> What is the Value of a Cohort? </h2> 
+
+---
+<br /><br />
+# Checkout Count in First Quarter of Activity
+
+
+```{r cohv_graph2, echo=FALSE, eval = TRUE, fig.width=12,fig.height=6, warning=FALSE, message=FALSE}
+cohort2 <- df %>%
+  filter(Cohort == Date) %>%
+  mutate(CountCheckout = CountCheckout/1000000)
+
+#cohort3
+
+ggplot(cohort2, aes(x = CohortName, y = CountCheckout), fill = "#507f94") +
+  geom_bar(stat='identity') + 
+  theme_bw() +
+  #gganimate::transition_states(cohort2$CohortName, transition_length = 4, state_length = 1) +
+  labs(y = "1st Quarter Checkout Count in Millions", x = "Cohort") +
+  theme_classic() +
+  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14)) 
+
+  
+```
+
+
+---
+<br /><br />
+# Equations
+
+<font size = "5.2"> For a given time frame: </font> <br /> <br />
+
+  * <font size = "5.2">  $Checkout Value = \frac{Content Spend} {Number of Checkouts}$</font> <br /> <br />
+  
+  * <font size = "5.2">  $\mathbf{Cohort Value = {Checkout Value} \times {Cohort Checkouts}}$ </font>  <br />
+  
+---
+<br /><br />
+# Cohort Value in First Month of Activity
+
+$Cohort Value = {Checkout Value} \times {Cohort Checkouts}$
+
+
+```{r cohv_graph, echo=FALSE, eval = TRUE, fig.width=12,fig.height=5, warning=FALSE, message=FALSE}
+
+cohort1 <- df %>%
+  filter(Cohort == Date) %>%
+  mutate(Money = Money/1000000)
+
+#cohort1
+
+ggplot(cohort1, aes(x = CohortName, y = Money)) +
+  geom_col(fill = "#006693") + 
+  labs(y = "1st Quarter Cohort Value in Millions of $", x = "Cohort") +
+  theme_classic() +
+  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14)) 
+
+```
+
+
+---
+<br /><br />
+# 2015-Q1 Cohort Value over Time
+
+$Cohort Value = {Checkout Value} \times {Cohort Checkouts}$
+
+
+```{r cv_graph1, echo=FALSE, eval = TRUE, fig.width=16,fig.height=6, warning=FALSE, message=FALSE}
+cv2015 <- df %>%
+  filter(Cohort == "2015-01-31") %>%
+  mutate(Money = Money/1000000, 
+         CountCheckout = CountCheckout/1000000)
+
+colors <- c("Cohort Value\nin Millions of $" = "#006693", 
+            "Checkouts\nin Millions" = "#8EC549")
+
+ani8 <- ggplot(cv2015) +
+  geom_line(aes(x = Date, y = Money, color = "Cohort Value\nin Millions of $"), size = 1.5) +  
+  gganimate::transition_reveal(cv2015$Date) +
+  # geom_line(aes(x = Date, y = CountCheckout, color = "Checkouts\nin Millions"), size = 1.5) +
+  labs(x = "Date", y = "") + 
+  scale_color_manual(values = colors) +
+  theme_classic()  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16))
+
+
+gganimate::animate(ani8, end_pause =95, width=1200, height=600)
+
+```
+
+---
+<br /><br />
+# 2015-Q1 Cohort Value over Time
+
+$Cohort Value = {Checkout Value} \times {Cohort Checkouts}$
+
+
+```{r cv_graph1b, echo=FALSE, eval = TRUE, fig.width=12,fig.height=6, warning=FALSE, message=FALSE}
+
+ani9 <- ggplot(cv2015) +
+     geom_line(aes(x = Date, y = CountCheckout, color = "Checkouts\nin Millions"), size = 1.5) +
+  geom_line(aes(x = Date, y = Money, color = "Cohort Value\nin Millions of $"), size = 1.5) + 
+  gganimate::transition_reveal(cv2015$Date) +
+  labs(x = "Date", y = "") + 
+  scale_color_manual(values = colors) +
+  theme_classic()  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16),legend.position = "none")
+
+gganimate::animate(ani9, end_pause =90, width=1200, height=600)
+
+```
+
+---
+<br /><br />
+# Cohort Value over time
+
+$Cohort Value = {Checkout Value} \times {Cohort Checkouts}$
+
+
+```{r pvall_graph3, eval=TRUE, echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE}
+ cv <- df %>%
+  mutate(CohortName = as.factor(CohortName), 
+         Money = Money/1000000) 
+
+cv2 <- cv %>% filter(age == 12)
+
+ggplot(cv) +
+  geom_line(aes(x = Date, y = Money, color = CohortName), size = 1) +
+  gganimate::transition_reveal(cv$Date) +
+  #scale_y_continuous(name = "Patron Value", sec.axis = sec_axis(~. / 10, name = "Checkout Value")) +
+  #geom_line(aes(x = Date, y = Cost * 10, color = "Checkout Value"), size = 1.5) ++
+  #geom_smooth(data = cv2, aes(x = Date, y = Money), se = FALSE, formula = y ~ x, method = "lm", color = "#0A2240", size = 1.8) +
+  labs(y = "Cohort Value in Millions of $", x = "Date") +
+  theme_classic() +
+  #scale_color_manual(values = colors2)  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16), legend.position = "none") 
+
+```
+
+
+---
+<br /><br />
+# Cohort Value over time
+
+$Cohort Value = {Checkout Value} \times {Cohort Checkouts}$
+
+
+
+```{r pvall_graph4, echo=FALSE, eval = TRUE, fig.width=13,fig.height=7, warning=FALSE, message=FALSE}
+
+ggplot(cv) +
+  geom_line(aes(x = Date, y = Money, color = CohortName), size = 1) +
+  #scale_y_continuous(name = "Patron Value", sec.axis = sec_axis(~. / 10, name = "Checkout Value")) +
+  #geom_line(aes(x = Date, y = Cost * 10, color = "Checkout Value"), size = 1.5) ++
+  gganimate::transition_reveal(cv$Date) + 
+  #geom_smooth(data = cv2, aes(x = Date, y = Money), se = FALSE, formula = y ~ x, method = "lm", color = "#0A2240", size = 1.8) +
+  labs(y = "Cohort Value in Millions of $", x = "Date") +
+  theme_classic() +
+  #scale_color_manual(values = colors2)  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16), legend.position = "none") 
+
+```
+
+
+---
+<br /><br />
+# Cumulative Cohort Value
+
+$Cohort Value = {Checkout Value} \times {Cohort Checkouts}$
+
+
+```{r cohv, eval=TRUE, echo=FALSE, fig.height=8, fig.width=12, message=FALSE, warning=FALSE}
+totals <- df %>%
+  group_by(Cohort) %>%
+  dplyr::summarise(all_money = round(sum(Money/1000000), digits = 1)) #%>%
+  #mutate(CohortName = as.factor(CohortName))
+
+#totals
+
+#ani4 <- 
+ggplot(totals, aes(x = reorder(Cohort, desc(Cohort)), y = all_money, fill = Cohort)) +
+  geom_col(show.legend = FALSE) + 
+  #gganimate::transition_time(totals$all_money)+   
+  #animation::transition_states(totals$CohortName) +
+  #gganimate::enter_grow()+
+  #gganimate::shadow_mark(past = TRUE)+
+  coord_flip() +  
+  #gganimate::animate(end_pause = 60,width = 600, height = 1000)+
+  #scale_x_continuous(breaks = 0, 30, 10)
+  #geom_text(aes(label = paste0("$", all_money, " Million")), nudge_x = - 0, nudge_y = 1.9, size = 4) +
+  labs(y = "Total Cohort Value in Millions of $", x = "Cohort") +
+  theme_classic() +
+  theme(legend.position = "none", axis.title = element_text(size = 14), axis.text = element_text(size = 6)) 
+
+#gganimate::animate(ani4)
+```  
+
+
+---
+class: inverse, left, middle
+<br /><br />
+<h2> What is the Value of a Patron? </h2> 
+
+---
+<br /><br />
+# Patron Count in First Quarter of Activity
+
+
+```{r pat_size, echo=FALSE, eval = TRUE, fig.width=12,fig.height=6, warning=FALSE, message=FALSE}
+cohort3 <- df %>%
+  filter(Cohort == Date) %>%
+  mutate(CountPatron = CountPatron/1000000)
+
+
+ggplot(cohort3, aes(x = Cohort, y = CountPatron)) +
+  geom_col(fill = "#4f8e9c") + 
+  #gganimate::transition_time(cohort3$Date) + 
+  #gganimate::shadow_mark(past = TRUE) +
+  labs(y = "1st Quarter Patron Count in Millions", x = "Cohort") +
+  theme_classic() +
+  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14)) 
+
+```
+
+
+---
+<br /><br />
+# Equations
+
+<font size = "5.2"> For a given time frame: </font> <br /> <br />
+
+  * <font size = "5.2"> $Checkout Value = \frac{Content Spend} {Number of Checkouts}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $Cohort Value = {Checkout Value} \times {Cohort Checkouts}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $\mathbf{Patron Value = \frac{Cohort Value}{Cohort Active Patrons}}$ </font> <br /> <br />
+  
+  
+
+```{r pv_tab, eval=TRUE, echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE}
+pv1 <- df %>%
+  select(CohortName, Cohort, Date, Money, CountPatron) %>%
+  filter(Cohort == Date) %>%
+  mutate(PatVal = Money / CountPatron)
+
+pv1_tab <- pv1 %>%
+  select(CohortName, PatVal) %>%
+  knitr::kable(digits = 2)
+
+#pv1_tab
+
+```
+
+
+
+
+---
+<br /><br />
+# Patron Value in First Quarter of Activity
+
+$Patron Value = \frac{Cohort Value}{Cohort Active Patrons}$
+
+
+```{r pv_graph1.0, eval=TRUE, echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE}
+
+ggplot(pv1, aes(x = CohortName, y = PatVal)) +
+  geom_col(fill = "#74CEE2") + 
+  labs(y = "1st Quarter Patron Value in $", x = "Cohort") + 
+  theme_classic() +
+  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14)) 
+
+```
+
+
+
+---
+<br /><br />
+# 2015-Q1 Patron Value over Time
+
+$Patron Value = \frac{Cohort Value}{Cohort Active Patrons} \qquad \qquad$ <font color = "white"> $Checkout Value = \frac{Content Spend}{Number of Checkouts}$ </font>
+
+
+```{r pv_graph1, echo=FALSE, eval = TRUE, fig.width=12,fig.height=6, warning=FALSE, message=FALSE}
+pv2015 <- df %>%
+  filter(Cohort == "2015-03-31") %>%
+  mutate(PatVal = Money / CountPatron)
+
+colors2 <- c("Patron Value       " = "#74CEE2",
+             "Checkout Value" = "#EE523B")
+
+ani12 <- ggplot(pv2015) +
+  geom_line(aes(x = Date, y = PatVal, color = "Patron Value       "), size = 1.5) + 
+  gganimate::transition_reveal(pv2015$Date) + 
+    scale_y_continuous(name = "Patron Value in $", limits = c(0,15), sec.axis = sec_axis(~. / 10, name = "Checkout Value in $")) +
+  #geom_line(aes(x = Date, y = Cost * 10, color = "Checkout Value"), size = 1.5) ++
+  labs(y = "Patron Value", x = "Date", Title = "Patron Value for 2015 Q1 Cohort") + 
+  theme_classic() + 
+  scale_color_manual(values = colors2)  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16)) 
+
+gganimate::animate(ani12, end_pause = 90, width = 600, height = 400)
+
+
+```
+
+
+
+---
+<br /><br />
+# 2015-Q1 Patron Value over Time
+
+$Patron Value = \frac{Cohort Value}{Cohort Active Patrons} \qquad \qquad Checkout Value = \frac{Content Spend}{Number of Checkouts}$
+
+
+
+```{r pv_graph2, eval=TRUE, echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE}
+pv2015 <- df %>%
+  filter(Cohort == "2015-03-31") %>%
+  mutate(PatVal = Money / CountPatron)
+
+ani13 <- ggplot(pv2015) +
+  geom_line(aes(x = Date, y = PatVal, color = "Patron Value       "), size = 1.5) +  
+    scale_y_continuous(name = "Patron Value in $", limits = c(0,15), sec.axis = sec_axis(~. / 10, name = "Checkout Value in $")) +
+  geom_line(aes(x = Date, y = Cost * 10, color = "Checkout Value"), size = 1.5) +
+  labs(y = "Patron Value", x = "Date", Title = "Patron Value for 2015 Q1 Cohort") + 
+  gganimate::transition_reveal(pv2015$Date) + 
+  theme_classic() + 
+  scale_color_manual(values = colors2)  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16)) +
+  guides(color = guide_legend(reverse = TRUE))
+
+gganimate::animate(ani13, end_pause = 90, width = 600, height = 400)
+
+```
+
+
+---
+
+# Patron Value over Time
+
+$Patron Value = \frac{Cohort Value}{Cohort Active Patrons}$
+
+
+
+```{r pv_graph30, echo=FALSE, eval = TRUE, fig.width=12,fig.height=6, warning=FALSE, message=FALSE}
+pv <- df %>%
+  mutate(PatVal = Money / CountPatron, CohortName = as.factor(CohortName))
+
+ggplot(pv) +
+  geom_line(aes(x = Date, y = PatVal, color = CohortName), size = 1) +
+  gganimate::transition_reveal(pv$Date) +
+  #scale_y_continuous(name = "Patron Value", sec.axis = sec_axis(~. / 10, name = "Checkout Value")) +
+  #geom_line(aes(x = Date, y = Cost * 10, color = "Checkout Value"), size = 1.5) ++
+  labs(y = "Patron Value in $", x = "Date", Title = "Patron Value for 2015 Q1 Cohort") +
+  theme_classic() +
+  #scale_color_manual(values = colors2)  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16), legend.position = "none") 
+```
+
+
+---
+# Patron Value over Time: 2019-2022
+
+$Patron Value = \frac{Cohort Value}{Cohort Active Patrons}$
+
+
+```{r pv_graph3, echo=FALSE, eval = TRUE, fig.width=12,fig.height=3, warning=FALSE, message=FALSE}
+pv <- df %>%
+  mutate(PatVal = Money / CountPatron, CohortName = as.factor(CohortName))
+
+
+pv <- pv %>% filter(Date >= as.Date('2019-03-01')) %>% filter(Cohort >= as.Date('2019-03-01'))
+
+
+ggplot(pv) +
+  geom_line(aes(x = Date, y = PatVal, color = CohortName), size = 1) +
+  #gganimate::transition_manual(pv$Date) +
+  gganimate::transition_reveal(pv$Date) + 
+  #scale_y_continuous(name = "Patron Value", sec.axis = sec_axis(~. / 10, name = "Checkout Value")) +
+  #geom_line(aes(x = Date, y = Cost * 10, color = "Checkout Value"), size = 1.5) ++
+  labs(y = "Patron Value in $", x = "Date", Title = "Patron Value for 2015 Q1 Cohort") +
+  theme_classic() +
+  #scale_color_manual(values = colors2)  +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16), legend.position = "none") + scale_x_date(date_breaks = "3 months", date_labels =  "%b %Y")
+
+```
+
+
+```{r cohort_patrons_table4, echo = FALSE, fig.height=6, fig.width=12, warning=FALSE, message=FALSE}
+
+
+age_patval <-pv%>%filter(PatVal!="NA") %>%mutate(COVID_cohort = case_when(Cohort >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>%mutate(COVID_activity = case_when(Date >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>% group_by(age, COVID_cohort, COVID_activity)%>%summarise(Avg_PercentPatron = round(mean(PatVal),1))%>%filter(age>=-7)%>%filter((COVID_cohort=="COVID"&COVID_activity=="COVID")|(COVID_cohort=="Pre-COVID"&COVID_activity=="Pre-COVID"))%>%dplyr::select(age, COVID_cohort, Avg_PercentPatron)%>%pivot_wider(names_from = COVID_cohort, values_from = Avg_PercentPatron)%>%arrange(desc(age))%>%dplyr::select("age", "Pre-COVID", "COVID")%>%filter(age != 0)%>%mutate(age =case_when(age == -1 ~ "1 month old", age == -2 ~ "2 months old", age == -3 ~ "3 months old", age == -4 ~ "4 months old", age == -5 ~ "5 months old", age == -6 ~ "6 months old", age == -7 ~ "7 months old"))%>%mutate(`Value Difference` = COVID-`Pre-COVID`)
+
+
+#kable(age_patval, escape = F, align = "c", format.args = list(big.mark = ",")) %>%
+#kable_styling(c("striped", "condensed"), full_width = F,font_size = 13)
+
+
+```
+
+
+---
+
+# Patron Retention 
+
+* Pre-COVID months: January 2015 to February 2020 
+
+
+```{r cohort_patrons2, echo = FALSE, fig.height=3.5, fig.width=12, warning=FALSE, message=FALSE, warning=FALSE, message=FALSE}
+
+#cr <- df %>%  mutate(CohortName = as.factor(CohortName)) %>% filter(Date >= as.Date('2019-03-01'))%>% filter(Date <= as.Date('2020-10-01'))%>% filter(Cohort >= as.Date('2019-03-01'))%>% filter(Cohort <= as.Date('2020-10-01'))
+
+cr <- df %>%  mutate(CohortName = as.factor(CohortName)) %>% filter(Date <= as.Date('2022-07-01'))
+
+ani14 <- ggplot(cr, aes(x = Date, y = PercentPatron, color = CohortName), show.legend = FALSE) +
+  geom_line(size  = 1) +
+  gganimate::transition_reveal(cr$Date) + 
+  theme_classic() + 
+  labs(y = "Percent Patron Retention") +
+    theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16), legend.position = "none") +scale_x_date(date_labels = "%b %Y",date_breaks = "3 month")+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+gganimate::animate(ani14, width=1200, height= 350)
+  
+```
+
+
+
+```{r cohort_patrons_table2, echo = FALSE, fig.height=6, fig.width=12, warning=FALSE, message=FALSE}
+
+age_patron_activity <-cr %>%mutate(COVID_cohort = case_when(Cohort >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>%mutate(COVID_activity = case_when(Date >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>% group_by(age, COVID_cohort, COVID_activity)%>%summarise(Avg_PercentPatron = mean(PercentPatron))%>%filter(age>=-7)
+
+age_patron <-cr%>%mutate(COVID_cohort = case_when(Cohort >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>% group_by(age, COVID_cohort)%>%summarise(Avg_PercentPatron = mean(PercentPatron))%>%filter(age>=-7)
+
+age_patron_sum <-age_patron%>%mutate(Avg_PercentPatron=round(Avg_PercentPatron,1))%>% pivot_wider(names_from = COVID_cohort, values_from = Avg_PercentPatron)%>%arrange(desc(age))%>%dplyr::select("age", "Pre-COVID", "COVID")%>%filter(age != 0)%>%mutate(age =case_when(age == -1 ~ "1 month old", age == -2 ~ "2 months old", age == -3 ~ "3 months old", age == -4 ~ "4 months old", age == -5 ~ "5 months old", age == -6 ~ "6 months old", age == -7 ~ "7 months old"))%>%mutate(`Retention Difference` = COVID-`Pre-COVID`)
+
+kable(age_patron_sum, escape = F, align = "c", format.args = list(big.mark = ",")) %>%
+kable_styling(c("striped", "condensed"), full_width = F,font_size = 13)
+
+```
+
+
+---
+
+# Patron Retention: 2019-2020 
+
+* Pre-COVID months: March 2019 to February 2020 
+
+
+
+```{r cohort_patrons3b, echo = FALSE, fig.height=3.5, fig.width=12, warning=FALSE, message=FALSE, warning=FALSE, message=FALSE}
+
+cr <- df %>%  mutate(CohortName = as.factor(CohortName)) %>% filter(Date >= as.Date('2019-03-01'))%>% filter(Date <= as.Date('2020-11-01'))%>% filter(Cohort >= as.Date('2019-03-01'))%>% filter(Cohort <= as.Date('2020-11-01'))
+
+#cr <- df %>%  mutate(CohortName = as.factor(CohortName)) 
+
+ggplot(cr, aes(x = Date, y = PercentPatron, color = CohortName), show.legend = FALSE) +
+  geom_line(size  = 1) +
+  gganimate::transition_reveal(cr$Date) + 
+  theme_classic() + 
+  labs(y = "Percent Patron Retention") +
+    theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16), legend.position = "none") +scale_x_date(date_labels = "%b %Y",date_breaks = "1 month")+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+  
+```
+
+
+
+```{r cohort_patrons_table, echo = FALSE, fig.height=5, fig.width=12, warning=FALSE, message=FALSE}
+
+age_patron_activity <-cr%>%filter(Cohort >=as.Date("2019/01/01", "%Y/%m/%d")) %>%mutate(COVID_cohort = case_when(Cohort >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>%mutate(COVID_activity = case_when(Date >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>% group_by(age, COVID_cohort, COVID_activity)%>%summarise(Avg_PercentPatron = mean(PercentPatron))%>%filter(age>=-7)
+
+age_patron <-cr%>%filter(Cohort >=as.Date("2019/01/01", "%Y/%m/%d")) %>%mutate(COVID_cohort = case_when(Cohort >= as.Date("2020/03/01", "%Y/%m/%d")~"COVID", TRUE ~ "Pre-COVID"))%>% group_by(age, COVID_cohort)%>%summarise(Avg_PercentPatron = mean(PercentPatron))%>%filter(age>=-7)
+
+age_patron_sum <-age_patron%>%mutate(Avg_PercentPatron=round(Avg_PercentPatron,1))%>% pivot_wider(names_from = COVID_cohort, values_from = Avg_PercentPatron)%>%arrange(desc(age))%>%dplyr::select("age", "Pre-COVID", "COVID")%>%filter(age != 0)%>%mutate(age =case_when(age == -1 ~ "1 month old", age == -2 ~ "2 months old", age == -3 ~ "3 months old", age == -4 ~ "4 months old", age == -5 ~ "5 months old", age == -6 ~ "6 months old", age == -7 ~ "7 months old"))%>%mutate(`Retention Difference` = COVID-`Pre-COVID`)
+
+kable(age_patron_sum, escape = F, align = "c", format.args = list(big.mark = ",")) %>%
+kable_styling(c("striped", "condensed"), full_width = F,font_size = 13)
+
+```
+
+
+---
+<br /><br />
+# Patron Retention: 2019-2020 
+
+
+```{r cohort_patrons20, echo = FALSE, fig.height=7, fig.width=12, warning=FALSE, message=FALSE, warning=FALSE, message=FALSE}
+
+cr <- df %>%  mutate(CohortName = as.factor(CohortName)) %>% filter(Date >= as.Date('2019-03-01'))%>% filter(Date <= as.Date('2020-11-01'))%>% filter(Cohort >= as.Date('2019-03-01'))%>% filter(Cohort <= as.Date('2020-11-01'))%>%filter(PercentPatron!=100)%>%filter(age>=-7)
+
+
+#cr <- df %>%  mutate(CohortName = as.factor(CohortName)) 
+ggplot(cr, aes(x = age, y = PercentPatron, color = Cohort), show.legend = FALSE) +
+  geom_jitter(size  = 4) +
+  theme_classic(base_size=26) + 
+  labs(y = "Percent Patron Retention", x = "Age")+scale_color_gradientn(trans="date",colours = rainbow(5))+scale_x_continuous(breaks=(seq(-7,-1,1)))
+
+
+```
+
+
+---
+<br /><br />
+# Patron Retention: COVID-19 cohorts by month
+
+
+```{r cohort_patrons_table3, echo = FALSE, fig.height=5.5, fig.width=12, warning=FALSE, message=FALSE}
+
+test<-age_patron %>%filter(COVID_cohort=="Pre-COVID")%>%dplyr::select(Avg_PercentPatron)%>%t()%>%data.frame()
+
+age_patron2 <-cr%>%filter(Cohort >=as.Date("2020/03/01", "%Y/%m/%d")) %>%mutate(PercentPatron=round(PercentPatron,1))%>%dplyr::select(Cohort, age,PercentPatron)%>% pivot_wider(names_from = age, values_from = PercentPatron)%>%mutate(Cohort=as.character(Cohort))
+
+
+  
+  
+test<-test %>%mutate(Average = "Average 01/2019-02/2020", X0 = 100)%>%dplyr::select("Average","X7","X6","X5", "X4", "X3", "X2", "X1")
+
+colnames(test) = c("Cohort", -1:-7)
+
+test <- test[2,]
+
+monthly_patron <-rbind(age_patron2,test)
+monthly_patron <- monthly_patron 
+colnames(monthly_patron)=c("Cohort", "1 mo.","2 mos.","3 mos.","4 mos.","5 mos.", "6 mos.", "7 mos.")
+monthly_patron$`1 mo.` = round(monthly_patron$`1 mo.`,1)
+monthly_patron$`2 mos.` = round(monthly_patron$`2 mos.`,1)
+monthly_patron$`3 mos.` = round(monthly_patron$`3 mos.`,1)
+monthly_patron$`4 mos.` = round(monthly_patron$`4 mos.`,1)
+monthly_patron$`5 mos.` = round(monthly_patron$`5 mos.`,1)
+monthly_patron$`6 mos.` = round(monthly_patron$`6 mos.`,1)
+monthly_patron$`7 mos.` = round(monthly_patron$`7 mos.`,1)
+
+add_df <-data.frame(c("2020-10-01", "NA","NA", "NA", "NA", "NA", "NA", "NA" ))%>%t()
+
+add_df <-data.frame(add_df)
+colnames(add_df) <- c("Cohort","1 mo.", "2 mos.", "3 mos.", "4 mos.", "5 mos.", "6 mos.", "7 mos.")
+rownames(add_df) <- "0"
+
+monthly_patron <-rbind(monthly_patron,add_df)
+monthly_patron$index <- as.numeric(row.names(monthly_patron))
+monthly_patron<-monthly_patron[order(monthly_patron$index), ]
+
+monthly_patron <- monthly_patron[, -9]
+
+kable(monthly_patron, escape = F, align = "c", format.args = list(big.mark = ",")) %>%
+kable_styling(c("striped", "condensed"), full_width = F,font_size = 16)
+
+```
+
+
+---
+class: inverse, left, middle
+<br /><br />
+<h2> What is the Lifetime Value of a Patron? </h2> 
+
+---
+<br /><br />
+# Equations
+
+<font size = "5.2"> For a given time frame: </font> <br /> <br />
+
+  * <font size = "5.2"> $Checkout Value = \frac{Content Spend} {Number of Checkouts}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $Cohort Value = {Checkout Value} \times {Cohort Checkouts}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $Patron Value = \frac{Cohort Value}{Cohort Active Patrons}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $\mathbf{Patron Lifetime Value = \sum{Patron Value}}$ </font> <br /> <br />
+  
+---
+<br /><br />
+# Patron Lifetime Value
+
+$Patron Lifetime Value = \sum{Patron Value}$
+
+
+
+```{r pltv, echo=FALSE, eval = TRUE, message=FALSE,  fig.width=12,fig.height=8, warning=FALSE, message=FALSE}
+
+ltv <- df %>%
+    select(CohortName, Cohort, Date, Money, CountPatron) %>%
+  mutate(CohortName = as.factor(CohortName),
+         PatVal = Money / CountPatron) %>%
+  group_by(CohortName) %>%
+  dplyr::summarise(pltv = round(sum(PatVal), digits = 2), 
+            avgval = mean(PatVal))
+
+
+ggplot(ltv, aes(x = reorder(CohortName, desc(CohortName)), y = pltv, fill = CohortName)) +
+  geom_col(show.legend = FALSE) + 
+  coord_flip() +    
+  #geom_text(aes(label = paste0("$", pltv)), nudge_x = 0, nudge_y = 7.5, size = 4) +
+  labs(y = "Patron Lifetime Value in $", x = "Cohort") +
+  theme_classic() +
+  theme(legend.position = "none", axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+  
+``` 
+
+
+---
+<br /><br />
+# Equations
+
+<font size = "5.2"> For a given time frame: </font> <br /> <br />
+
+  * <font size = "5.2"> $Checkout Value = \frac{Content Spend} {Number of Checkouts}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $Cohort Value = {Checkout Value} \times {Cohort Checkouts}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $Patron Value = \frac{Cohort Value}{Cohort Active Patrons}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $Patron Lifetime Value = \sum{Patron Value}$ </font> <br /> <br />
+  
+  * <font size = "5.2"> $\mathbf{Patron LTV for Whole Cohort = \frac{\sum{Cohort Value}}{Cohort Initial Patrons, warning=FALSE, message=FALSE}, warning=FALSE, message=FALSE}$ </font> <br /> <br />
+  
+---
+<br /><br />
+# Patron Lifetime Value for Whole Cohort
+
+$Patron LTV for Whole Cohort = \frac{\sum{Cohort Value}}{Cohort Initial Patrons}$
+
+
+
+```{r adj_ltv_table, echo = FALSE, message = FALSE}
+totMon <- df %>%
+  select(CohortName, Money) %>%
+  mutate(CohortName = as.factor(CohortName)) %>%
+  group_by(CohortName) %>%
+  summarise(cototal = sum(Money))
+
+initial <- df %>%
+  select(CohortName, CountPatron, Cohort, Date, datediff) %>%
+  mutate(CohortName = as.factor(CohortName)) %>%
+  filter(Cohort == Date) 
+
+
+adj_ltv <- left_join(totMon, initial) %>%
+  mutate(altv = round(cototal/CountPatron, digits = 2), 
+         years = (max(datediff) - datediff) / 12)
+
+
+```
+
+
+
+
+```{r adj_ltv_chart, echo = FALSE, message = FALSE,  fig.width=12,fig.height=8, warning=FALSE, message=FALSE}
+ggplot(adj_ltv, aes(x = reorder(CohortName, desc(CohortName)), y = altv, fill = CohortName)) +
+  geom_col(show.legend = FALSE) + 
+  coord_flip() +    
+  #geom_text(aes(label = sprintf("$%0.2f", altv)), nudge_x = 0, nudge_y = 1.5, size = 4) +
+  labs(y = "Adjusted Patron Lifetime Value in $", x = "Cohort") +
+  theme_classic() +
+  theme(legend.position = "none", axis.title = element_text(size = 8), axis.text = element_text(size = 8)) 
+```
+
+
+---
+class: inverse, left, middle
+<br /><br />
+<h2> Wrapping up </h2> 
+
+---
+<br /><br />
+# Key Takeaways
+
+  * <font size = "6"> **An average patron in the 2019 Q2 cohort has generated $23.44 in value over its lifetime of one year** </font> <br />
+  * <font size = "6"> Patron retention has increased over time </font> <br />
+  * <font size = "6"> There is a downward trend in Checkout Value </font> <br />
+  * <font size = "6"> Patron behavior is consistently different in Q2 and Q4 than in Q1 and Q3 </font> <br /> 
+  
+
+---
+<br /><br />
+# Potential Next Steps
+
+  * <font size = "6"> **Calculate net value** </font> <br />
+  * <font size = "6"> Modify Cohort size to be more granular </font> <br />
+  * <font size = "6"> Look at other contributors for demand (inluding holds and requests to libraries) </font> <br />
+  * <font size = "6"> Consider other factors that may factor in to Patron Value (including format used, platform used, library card type, etc.)
+  
+
+
+
+---
+class: inverse, left, middle
+<br /><br />
+<h2> Any Questions? </h2> 
+  
+---
+class: inverse, left, middle
+<br /><br />
+<h2> Appendix </h2> 
+ 
+---
+<br /><br />
+# Definitions of Key Terms
+
+<font size = "6"> **Patron** </font> <br />
+  * <font size = "5"> A Patron in the context of this project is a member from the Public Library North America region who uses an OverDrive product</font> <br />
+  * <font size = "5"> Patronage begins when a person first completes a transaction (checkout, hold, or request to the library) with OverDrive </font> <br />
+
+<font size = "6"> **Active Patron** </font> <br />
+  * <font size = "5"> A Patron who completes a checkout with an OverDrive product in the time frame of interest </font> <br />
+  * <font size = "5"> Can be reclassified as active after a period of inactivity </font> <br />
+
+---
+<br /><br />
+# Definitions of Key Terms (continued)
+
+<font size = "6"> **Cohort** </font> <br />
+  * <font size = "5"> A grouping of Patrons by similar characteristics </font> <br />
+  * <font size = "5">  In this case, they are grouped by the quarter of their first transaction with OverDrive </font> <br />
+
+<font size = "6"> **Content Spend** </font> <br />
+  * <font size = "5"> The amount of money spent by libraries to acquire new content that patrons can check out </font> <br />
+  
+<font size = "6"> **Patron Lifetime Value** </font> <br />
+  * <font size = "5"> The amount of revenue generated for OverDrive per patron over the course of all of their interactions with OverDrive </font> <br />
+  
+---
+<br /><br />
+# Checkout Value
+
+
+
+```{r cv_tab2, echo=FALSE, eval = TRUE, fig.width=9,fig.height=1.5, warning=FALSE, message=FALSE}
+cv_tab <- cs_c %>%
+  select(Date, Cost) %>%
+  mutate(Date = as.yearmon(Date)) 
+
+t1 <- cv_tab[1:11,]
+t2 <- cv_tab[12:22,]
+
+knitr::kable(list(t1,t2), digits = 2) %>% 
+  row_spec(1, background = "white", color = "black")
+```
+
+
+---
+<br /><br />
+# Checkout Value Trend
+
+$Checkout Value = \frac{Content Spend} {Number of Checkouts}$
+
+
+```{r cv_graph_app, echo=FALSE, eval = TRUE, fig.width=9,fig.height=4.5, warning=FALSE, message=FALSE}
+
+fit1 <- lm(data = cs_c, Cost ~ datediff)
+
+p1 <-ggplot(cs_c, aes(x = Date, y = Cost))+
+  geom_line(aes(group = 1), color = "#EE523B",  show.legend = FALSE, size = 1) +
+  geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1) 
+
+#+
+#labs(title = paste("y =" ,signif(fit1$coef[[2]], 3), "x +" , signif(fit1$coef[[1]], 2)))  + 
+#  theme_classic() 
+#+
+ # geom_text(label = cs_c$Cost) +
+#  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14), plot.title = element_text(size = 16))
+
+#+ theme(plot.title = element_text(size = 10), legend.position = "none", x = "$ per Checkout")
+cs_c19 <- cs_c %>% 
+  filter(Date <= "2022-06-30") 
+
+fit2 <- lm(data = cs_c19, Cost ~ datediff)
+
+p2 <- ggplot(cs_c19, aes(x = Date, y = Cost))+
+  geom_line(aes(group = 1), color = "#EE523B", show.legend = FALSE, size = 1) +
+  geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1) 
+#+
+#labs(title = paste("y =" ,signif(fit2$coef[[2]], 3), "x +" , signif(fit2$coef[[1]], 2))) + theme(plot.title = element_text(size = 24), x = "$ per Checkout") +
+#  theme_classic() 
+#+
+#  geom_text(label = cs_c19$Cost) +
+#  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14), plot.title = element_text(size = 16))
+
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+
+```
+
+
+
+---
+<br /><br />
+# Considering Outliers
+
+$Checkout Value = \frac{Content Spend} {Number of Checkouts}$
+
+  - Original Mean: 0.885
+  - Original Standard Deviation: 0.111
+  
+  
+```{r cv_mean_app, echo=FALSE, eval = TRUE, fig.width=9,fig.height=4.5, warning=FALSE, message=FALSE}
+
+#mean(cs_c$Cost)
+#sd(cs_c$Cost)
+cs_cout <- cs_c %>%
+  filter(Date != "2015-12-31")
+
+fit3 <- lm(data = cs_cout, Cost ~ datediff)
+
+p3 <-ggplot(cs_cout, aes(x = Date, y = Cost))+
+  geom_line(aes(group = 1), color = "#EE523B",  show.legend = FALSE, size = 1) +
+  geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1) +
+labs(title = paste("y =" ,signif(fit3$coef[[2]], 3), "x +" , signif(fit3$coef[[1]], 2)))  + 
+  theme_classic()  
+#+
+#  geom_text(label = cs_cout$Cost) +
+#  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14), plot.title = element_text(size = 16))
+
+# + theme(plot.title = element_text(size = 10), legend.position = "none", x = "$ per Checkout")
+
+cs_c19out <- cs_cout %>% 
+  filter(Date <= "2019-12-31", Date != "2015-12-31") 
+
+fit4 <- lm(data = cs_c19out, Cost ~ datediff)
+
+p4 <- ggplot(cs_c19out, aes(x = Date, y = Cost))+
+  geom_line(aes(group = 1), color = "#EE523B", show.legend = FALSE, size = 1) +
+  geom_smooth(formula = y ~ x , method = "lm", color = "#507f94", se = FALSE, size = 1) +
+labs(title = paste("y =" ,signif(fit4$coef[[2]], 3), "x +" , signif(fit4$coef[[1]], 2)))  +
+  theme_classic() 
+#+
+#  geom_text(label = cs_c19out$Cost) +
+#  theme(axis.title = element_text(size = 16), axis.text = element_text(size = 14), plot.title = element_text(size = 16))
+
+#+ theme(plot.title = element_text(size = 24), x = "$ per Checkout")
+
+gridExtra::grid.arrange(p3, p4, ncol = 2)
+
+```
+
+
+---
+<br /><br />
+# Patron Value by Cohort over Time
+
+$Patron Value = \frac{Cohort Value}{Cohort Active Patrons}$
+
+
+```{r pv_time_tile, echo = FALSE, fig.height= 8, fig.width= 12, warning=FALSE, message=FALSE}
+pv <- df %>%
+    select(CohortName, Cohort, Date, Money, CountPatron) %>%
+  mutate(PatVal = Money / CountPatron)
+  
+
+ggplot(pv, aes(x = Date, y = reorder(CohortName, desc(CohortName)))) +
+  geom_tile(aes(fill = round(PatVal, digits = 1)), show.legend = TRUE) +
+   scale_fill_viridis_c(option = "plasma", name = "Patron Value in $") +
+  #geom_text(aes(label = round(PatVal, digits = 1)), color = "#231F20", size = 4.5) +
+  xlab("Date") + ylab("Cohort") + 
+  #ggtitle(paste("Patron Value")) +
+  theme_classic() +
+  theme(axis.title = element_text(size = 8), axis.text = element_text(size = 9), legend.text = element_text(size = 16), legend.title = element_text(size = 16))
+```
+
+
+---
+<br /><br />
+# Patron Value by Cohort Using Initial Cohort Size
+
+$Patron Value = \frac{Cohort Value}{Cohort Initial Patrons}$  
+
+
+```{r pltv_whole_cohort_tile, echo = FALSE, message = FALSE, fig.height= 8, fig.width= 12, warning=FALSE, message=FALSE}
+initial2 <- initial %>%
+  mutate(inicount = CountPatron) %>%
+  select(CohortName, inicount)
+
+dfini <- df %>%
+  mutate(CohortName = as.factor(CohortName))
+
+ltvwc <- left_join(dfini, initial2) %>%
+  mutate(pvwc = Money/inicount)
+
+
+ggplot(ltvwc, aes(x = Date, y = reorder(CohortName, desc(CohortName)))) +
+  geom_tile(aes(fill = round(pvwc, digits = 1)), show.legend = TRUE) +
+   scale_fill_viridis_c(option = "plasma", name = "Patron Value in $") +
+  #geom_text(aes(label = round(pvwc, digits = 1)), color = "#231F20", size = 4.5) +
+  xlab("Date") + ylab("Cohort") + 
+  #ggtitle(paste("Patron Value")) +
+  theme_classic() +
+  theme(axis.title = element_text(size = 8), axis.text = element_text(size = 8), legend.text = element_text(size = 8), legend.title = element_text(size = 8))
+```  
+
+
+---
+<br /><br />
+# Patron Value per Year
+
+
+```{r adj_ltv_chart_byYear, echo = FALSE, message = FALSE,  fig.width=12,fig.height=8, warning=FALSE, message=FALSE}
+adj_ltv2 <- adj_ltv %>%
+  filter(years > 0) %>%
+  mutate(altvPerYear = altv / years)
+
+highlight_altv <- adj_ltv2 %>%
+           filter(years >= 1)
+
+ggplot(adj_ltv2, aes(x = reorder(CohortName, desc(CohortName)), y = altvPerYear, fill = CohortName)) +
+  geom_col(show.legend = FALSE, alpha = .3) +
+  geom_col(data = highlight_altv, aes(x = reorder(CohortName, desc(CohortName)), y = altvPerYear),  show.legend = FALSE) +
+  coord_flip() +    
+  #geom_text(aes(label = sprintf("$%0.2f", altvPerYear)), nudge_x = 0, nudge_y = 1.5, size = 4) +
+  labs(y = "Adjusted Patron Annual Value in $", x = "Cohort") +
+  theme_classic() +
+  theme(legend.position = "none", axis.title = element_text(size = 8), axis.text = element_text(size = 8))
+```  
+
+
+
+---
+<br /><br />
+# More Key Takeaways
+
+.pull-left[
+
+<font size = "5"> **Checkout Value** </font> <br />
+  * <font size = "5.8"> There is a downward trend in Checkout Value </font> <br />
+  * <font size = "5.8"> Checkout Value is consistently greater in Q2 and Q4 than in Q1 and Q3 </font> <br /> 
+
+
+<font size = "5"> **Cohort Value** </font> <br />
+  * <font size = "5.8"> Cohort Value decreases due to decrease in Cohort Checkouts over time </font> <br />
+  * <font size = "5.8"> The older the Cohort, the greater overall value generated in its existence </font> <br />
+  
+]
+
+.pull-right[
+
+<font size = "5"> **Patron Value** </font> <br />
+  * <font size = "5.8"> Patron retention has increased over time </font> <br />
+  * <font size = "5.8"> Increase in Patron Value at the beginning of their lifetime attributed to high atrition rate after first quarter </font> <br />
+  
+<font size = "5"> **Patron Lifetime Value** </font> <br />
+  * <font size = "5.8"> An average patron in the 2019 Q2 cohort has generated $23.44 in value over its lifetime of one year </font> <br />
+  
+]  
+
+
