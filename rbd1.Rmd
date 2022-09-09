@@ -1,0 +1,990 @@
+---
+institute: "OverDrive"
+output:
+ xaringan::moon_reader:
+    seal: FALSE
+    includes: 
+    css: ["default", "./my-theme.css"]
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+date: '2022-08-08'
+---
+
+layout: true
+
+<div class="my-footer"><span> OverDrive Confidential: Internal Use Only
+</span></div> 
+
+---
+
+class: center, middle
+
+
+<br />
+ <span style="color:white"> <font size="9">**RBD M&A**</span></font>
+ <br />
+ <span style="color:white"> <font size="6">** **</span></font>
+ <br />
+<font size="5">
+August 8, 2022
+</font>
+<br />
+<font size="5">
+Susan Gross; Refreshed by Hao&Benen
+</font>
+<br />
+<font size="5">
+Business Systems & Analytics
+</font>
+
+
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, comment = NA)
+knitr::opts_knit$set(root.dir = "C:/teporaryFiles/rbd")
+options(scipen = 999)
+options(cache = TRUE)
+
+```
+
+
+
+```{r load packages, echo=FALSE, message=FALSE, warning=FALSE}
+
+setwd("C:/teporaryFiles/rbd")
+require(ggplot2); require(tidyr); library(plyr); require(dplyr); require(RODBC); require(kableExtra); require(pander); require(lubridate); require(cowplot); require(data.table); require(knitr);  require(gridExtra); require(openxlsx); require(scales);
+
+```
+
+---
+# <font size = "6"> Purpose 
+
+  * <font size = "6"> Compare the Magazine Pre-Migration, Post-Migration and current Value, how are we doing after the acquisition? </font> <br />
+  * <font size = "6"> Magazine Convertion to other OverDrive product and Magazine only customers  </font> <br />
+  * <font size = "6"> New Magazine Customer, are they here for the Magazine or brought to other OD products   </font> <br />
+  * <font size = "6"> Lost Magazine Customer, how do we lost them, are they still stay for other OD product   </font> <br />
+
+
+```{r loadthedata, echo=FALSE, message=FALSE, warning=FALSE}
+
+cn <- odbcDriverConnect('driver={SQL Server};server=reportDB;database=master;trusted_connection=true')
+
+  
+df_2019 <- sqlQuery(cn,
+                         paste("
+ SELECT 
+       [Account_18_Digit_ID__c]
+      ,CAST([End_Date__c] AS DATE) AS [End_Date__c]
+      ,[Simultanous_Use__c]
+      ,CAST([Start_Date__c] AS DATE) AS [Start_Date__c]
+      ,[Status__c]
+      ,[Subscription_Name__c]
+      ,[Total_Price_USD__c]
+      ,[Unit_Count__c]
+	  , Price_Per_Day = [Total_Price_USD__c]/DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST([End_Date__c] AS DATE))
+	  , StartedDaysAgo = DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST(GETDATE() AS DATE)) 
+	  , EndedDaysAgo = DATEDIFF(DAY, CAST([End_Date__c] AS DATE) , CAST(GETDATE() AS DATE)) 
+	  , ActiveSubscriptionDays = DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST([End_Date__c] AS DATE)) 
+	  , rbpc.Pre_Migration_Status__c
+  FROM [sf_mirror].[dbo].[Product_Subscriptions__c] psbc
+  left join sf_mirror.dbo.RBD_Historical_Product__c rbpc on rbpc.Account__c = psbc.Account_18_Digit_ID__c
+  WHERE Format__c LIKE '%Magazine%'
+  and Start_Date__c >= CONVERT(datetime, '2019-06-30')
+  and Start_Date__c < CONVERT(datetime, '2020-06-30')
+  --AND CR_ID__c IN ( 814, 612)
+  AND Total_Price_USD__c >0
+  ORDER BY  Account_18_Digit_ID__c
+"))
+  
+
+df_2020 <- sqlQuery(cn, 
+                    paste("
+                              SELECT  --CR_ID__c
+       [Account_18_Digit_ID__c]
+      ,CAST([End_Date__c] AS DATE) AS [End_Date__c]
+      ,[Simultanous_Use__c]
+      ,CAST([Start_Date__c] AS DATE) AS [Start_Date__c]
+      ,[Status__c]
+      ,[Subscription_Name__c]
+      ,[Total_Price_USD__c]
+      ,[Unit_Count__c]
+	  , Price_Per_Day = [Total_Price_USD__c]/DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST([End_Date__c] AS DATE))
+	  , StartedDaysAgo = DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST(GETDATE() AS DATE)) 
+	  , EndedDaysAgo = DATEDIFF(DAY, CAST([End_Date__c] AS DATE) , CAST(GETDATE() AS DATE)) 
+	  , ActiveSubscriptionDays = DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST([End_Date__c] AS DATE)) 
+	  , rbpc.Pre_Migration_Status__c
+  FROM [sf_mirror].[dbo].[Product_Subscriptions__c] psbc
+  left join sf_mirror.dbo.RBD_Historical_Product__c rbpc on rbpc.Account__c = psbc.Account_18_Digit_ID__c
+  WHERE Format__c LIKE '%Magazine%'
+  and Start_Date__c >= CONVERT(datetime, '2020-06-30')
+  and Start_Date__c < CONVERT(datetime, '2021-06-30')
+  --AND CR_ID__c IN ( 814, 612)
+  AND Total_Price_USD__c >0
+  ORDER BY  Account_18_Digit_ID__c
+                          " ))
+
+
+df_2021 <- sqlQuery(cn,
+                    paste("
+                           SELECT  --CR_ID__c
+       [Account_18_Digit_ID__c]
+      ,CAST([End_Date__c] AS DATE) AS [End_Date__c]
+      ,[Simultanous_Use__c]
+      ,CAST([Start_Date__c] AS DATE) AS [Start_Date__c]
+      ,[Status__c]
+      ,[Subscription_Name__c]
+      ,[Total_Price_USD__c]
+      ,[Unit_Count__c]
+	  , Price_Per_Day = [Total_Price_USD__c]/DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST([End_Date__c] AS DATE))
+	  , StartedDaysAgo = DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST(GETDATE() AS DATE)) 
+	  , EndedDaysAgo = DATEDIFF(DAY, CAST([End_Date__c] AS DATE) , CAST(GETDATE() AS DATE)) 
+	  , ActiveSubscriptionDays = DATEDIFF(DAY, CAST([Start_Date__c] AS DATE) , CAST([End_Date__c] AS DATE)) 
+	  , rbpc.Pre_Migration_Status__c
+  FROM [sf_mirror].[dbo].[Product_Subscriptions__c] psbc
+  left join sf_mirror.dbo.RBD_Historical_Product__c rbpc on rbpc.Account__c = psbc.Account_18_Digit_ID__c
+  WHERE Format__c LIKE '%Magazine%'
+  and Start_Date__c >= CONVERT(datetime, '2021-06-30')
+  and Start_Date__c < CONVERT(datetime, '2022-06-30')
+  --AND CR_ID__c IN ( 814, 612)
+  AND Total_Price_USD__c >0
+  ORDER BY  Account_18_Digit_ID__c
+                          "))
+
+
+
+df_2019$year <- 2019
+#head(df_2019)
+
+df_2020$year <- 2020
+
+df_2021$year <- 2021
+
+df_all <- rbind(df_2019, df_2020, df_2021)
+
+```
+
+
+
+---
+# <font size = "5">Account Level in ProductSubscription Table, Total Revenue in Account Level
+# <font size = "4"> Constantly Growing 
+
+
+```{r revenue1, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+df_dall<-df_all %>% group_by(year)%>% dplyr::summarise(TotalSpend=sum(Total_Price_USD__c))
+
+
+ggplot(df_dall, aes_string(x = "year", y="TotalSpend")) +   geom_bar(stat = "identity", color="black") +theme_classic(base_size=15)+ theme(legend.title= element_blank()) + labs( y = "Spend in $", x = "year")+ scale_y_continuous(labels = scales::comma)+scale_fill_manual(values=c( "#7fb1c8","#0A2240","#a3f896"))
+```
+
+---
+#<font size = "6"> New to Overdrive/Exsiting Customer/Unknown
+
+```{r revenue2, echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=12}
+df_all1 <- df_all
+
+for(i in 1:length(df_all$Account_18_Digit_ID__c)) {
+   if(is.na(df_all1[i, 'Pre_Migration_Status__c'])) {
+     df_all1[i, 'Pre_Migration_Status__c'] <- 'Unknown'
+   }
+}
+
+
+df_dall1<-df_all1 %>% group_by(year, Pre_Migration_Status__c)%>% dplyr::summarise(TotalSpend=sum(Total_Price_USD__c))
+
+
+ggplot(df_dall1, aes_string(x = "year", y="TotalSpend", fill="Pre_Migration_Status__c" )) +   geom_bar(stat = "identity", color="black") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+```
+
+
+
+```{r dataload2, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+
+## dc levels
+dc_2021 <- read.csv("2021st.csv")
+dc_2020 <- read.csv("2020st.csv")
+dc_2019 <- read.csv("2019st.csv")
+
+alld2021 <- read.csv("2021all.csv") 
+
+#head(alld2021)
+alld2020 <- read.csv("2020all.csv")
+#head(alld2020)
+
+#dc_2021
+
+```
+
+```{r dataprocess1, echo=FALSE, message=FALSE, warning=FALSE}
+
+dc_2019$year <- 2019
+dc_2020$year <- 2020
+dc_2021$year <- 2021
+dc_all <- rbind(dc_2019, dc_2020, dc_2021)
+
+dc_all$Market <- ifelse(dc_all$Platform =="DLR" & dc_all$Region =="Americas", "NAPL", ifelse(dc_all$Platform == "SDL" & dc_all$Region == "Americas", "K12NA", ifelse(dc_all$Platform == "DLR" & dc_all$Region != "Americas", "GL&E", "Professional")))
+#dc_all
+```
+
+---
+#<font size = "5"> Digital Collection Level, Total Magazine Revenue
+#<font size = "4"> Compare with Account level, there's slightly difference in 2020, Data missing during the migration process
+```{r revenue3, echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=12}
+##yearly distribution
+
+
+dc_all %>% group_by(year)%>% dplyr::summarise(Totalspend=sum(TotalSpend)) %>% 
+ggplot(aes(x = year, y=Totalspend)) + geom_bar(stat = "identity", color="black") + theme_classic(base_size=15) + theme(legend.title= element_blank()) + labs( y = "Spend in $", x = "year")+ scale_y_continuous(labels = scales::comma)+scale_fill_manual(values=c( "#7fb1c8","#0A2240","#a3f896"))
+
+
+```
+
+
+
+
+---
+#<font size = "6"> DC Level Revenue based on Market 
+
+```{r revenue4, echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=12}
+###platform, region, 
+
+dc_all1 <- dc_all %>% group_by(year, Market)%>% dplyr::summarise(TotalSpend=sum(TotalSpend))
+
+#dc_all1
+
+ggplot(dc_all1, aes(x = year, y= TotalSpend, fill=Market)) +   
+geom_bar(stat = "identity", color="black") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + 
+labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+```
+
+---
+# <font size = "6">DC Level Revenue based on Region
+# <font size = "4">Americas always the largest part, while Europe and Oceania grow fast
+
+```{r revenue5, echo=FALSE, message=FALSE, warning=FALSE, fig.height=6, fig.width=12}
+
+
+dc_all2 <- dc_all %>% group_by(year, Region)%>% dplyr::summarise(TotalSpend=sum(TotalSpend))
+
+#dc_all2
+
+ggplot(dc_all2, aes(x = year, y= TotalSpend, fill=Region)) +   
+geom_bar(stat = "identity", color="black") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + 
+labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+
+```
+
+---
+# <font size = "6"> Active Account Percentage
+ 
+```{r echo=FALSE, fig.height=5, fig.width=10, message=FALSE, warning=FALSE}
+
+dc_all_active <- subset(dc_all, dc_all$TotalSpend > 0)
+
+
+dc_all_active19 <- subset(dc_all_active, dc_all_active$year == 2019)
+dc_all_active20 <- subset(dc_all_active, dc_all_active$year == 2020)
+dc_all_active21 <- subset(dc_all_active, dc_all_active$year == 2021)
+
+
+
+
+
+dc_all_active <- data.frame( no = c(2019,2020,2021),
+                             active = c(length(dc_all_active19$CRID)/length(dc_2019$CRID), length(dc_all_active20$CRID)/length(dc_2020$CRID), length(dc_all_active21$CRID)/length(dc_2021$CRID))
+)
+
+
+
+ggplot(dc_all_active, aes(x=no, y=active)) + 
+  geom_bar(stat = "identity", color="black", fill="#4f8e9c") + 
+  theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "Active", x = "Year")+scale_fill_manual(values=c( "#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+  
+
+```
+
+
+
+
+---
+# <font size = "6"> Americas Region Revenue based on Subregion
+
+```{r revenue6, echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=12}
+
+##subregion 
+
+dc_all3 <- dc_all %>% mutate(Region="Americas")  %>% group_by(year, Territory)%>% dplyr::summarise(TotalSpend=sum(TotalSpend))
+
+#dc_all3
+
+#ggplot(dc_all3, aes(x = year, y= TotalSpend, fill=Territory)) +   
+#geom_bar(stat = "identity", color="black") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + 
+#labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", #"#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+
+ggplot(data=dc_all3, aes(x=year, y=TotalSpend, group=Territory)) +
+  geom_line(aes(color = Territory))+
+  geom_point() +
+  theme(legend.title = element_blank(), axis.title = element_text(size = 16), axis.text = element_text(size = 14), legend.text = element_text(size = 16))
+
+
+
+```
+
+---
+# <font size = "6"> Revenue based on subscription tire
+
+```{r revenue10, echo=FALSE, message=FALSE, warning=FALSE, fig.height=6, fig.width=12}
+###subscription tire
+
+dc_all4 <- dc_all %>%  group_by(year, tire = as.factor(Subscription_Tire))%>% dplyr::summarise(TotalSpend=sum(TotalSpend))
+
+
+ggplot(data=dc_all4, aes(x=year, y=TotalSpend, group=tire)) +
+  geom_line(aes(color = tire)) +
+  geom_point(aes(color = tire))
+
+
+
+```
+
+
+
+
+```{r convert1, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+#### transformation 
+
+dc_all$transfrom <- 0
+
+dc_all <- dc_all %>% replace(.=="NULL", NA)
+  
+for(i in 1:length(dc_all$CPC)) {
+  if(is.na(dc_all[i, "CPC"])) {
+    dc_all[i, "CPC"] <- 0
+  }
+}
+
+
+for(i in 1:length(dc_all$PurchaseOrders)) {
+  if(is.na(dc_all[i, "PurchaseOrders"])) {
+    dc_all[i, "PurchaseOrders"] <- 0
+  }
+}
+
+
+for(i in 1:length(dc_all$otherSub)) {
+  if(is.na(dc_all[i, "otherSub"])) {
+    dc_all[i, "otherSub"] <- 0
+  }
+}
+
+
+
+dc_all$transfrom <-ifelse (dc_all$CPC > 0 | dc_all$PurchaseOrders > 0 | dc_all$otherSub > 0, "1", "0")
+
+dc_all$transformCPC <- ifelse(dc_all$CPC > 0, "1", "0")
+
+dc_all$transformPO <- ifelse(dc_all$PurchaseOrders > 0, "1", "0")
+
+dc_all$transformOther <- ifelse(dc_all$otherSub > 0, "1", "0")
+
+#dc_all
+```
+
+
+
+```{r convert2, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+
+###would be better to use content e-book, audio-book 
+
+
+dc_all5<- dc_all 
+
+dc_all5$count <- 1
+
+dc_all5 <- dc_all5 %>% group_by(year)%>% dplyr::summarise(Total=sum(count), Overall=sum(as.numeric(transfrom)), CPC = sum(as.numeric(transformCPC)), PurchaseOrder=sum(as.numeric(transformPO)), otherSub = sum(as.numeric(transformOther))) 
+
+#dc_all5
+
+
+#ggplot(dc_all5, aes(x = year, y=Total)) 
+#+ geom_col(stat = "identity", color="black", fill="Total") 
+#+ theme_classic(base_size=15) + theme(legend.title= element_blank()) + labs( y = "Spend in $", x = "year")+ #scale_y_continuous(labels = scales::comma)+scale_fill_manual(values=c( "#7fb1c8","#0A2240","#a3f896"))
+
+
+```
+
+
+---
+class: inverse, left, middle
+<br /><br />
+<h2> Magazine Customers Also Purchase other OD products </h2> 
+
+
+
+
+---
+# <font size = "6"> Convertion Volume
+```{r convert3, echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=12}
+
+###transform plot
+ggplot(dc_all5, aes(x=year)) + 
+  geom_col(aes( y = Total), size = 1, color = "black", fill = "cadetblue1") +
+  geom_line(aes(y = Overall, color = "Overall"), size = 1) + 
+  geom_line(aes( y = CPC, color = "CPC"), size = 1) + 
+  geom_line(aes( y = PurchaseOrder, color = "PurchaseOrder"), size = 1) +
+  geom_line(aes( y = otherSub, color = "otherSub"), size = 1) +
+  scale_color_manual(values = c("red", "aquamarine4", "yellow", "darkmagenta"))
+
+```
+
+
+---
+#<font size = "6"> Convertion Percentage 
+
+```{r convert4, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+
+dc_all6 <- dc_all5 %>% dplyr::summarise(year=year, "Overall in %"=Overall/Total * 100, "CPC in %"=CPC/Total * 100, "PurchaseOrder in %" = PurchaseOrder/Total * 100, "otherSub in %" = otherSub/Total * 100)
+
+dc_all6
+
+```
+
+
+---
+#<font size = "6"> Convertion Percentage in Each Category
+
+```{r convert5, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+
+
+ggplot(data = dc_all6 %>% gather(Categories, Percentage, -year), 
+       aes(x = year, y = Percentage, fill = Categories)) + 
+    geom_bar(stat = 'identity', position = 'dodge')
+
+
+```
+
+
+
+---
+# <font size = "6"> Convention Volumn Compare Based on Platform
+
+```{r convert6, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+
+
+#### there're around 9%-10% customers, they only purchase maginze,   what do they have in common?   
+#### what's difference in                          visulize and modeling
+
+
+dc_all7 <- dc_all %>% filter(transfrom == 0)
+#dc_all7   ###non transform at all, only magazine.
+
+#summary(dc_all7)
+
+###sample of other service
+### weighten the data
+
+dc_all8 <- dc_all %>% filter(transfrom == 1)
+
+dc_all8 <- dc_all8[sample(nrow(dc_all8), 142), ]
+
+#dc_all8
+
+
+#### combine dataset
+dc_all9 <- rbind(dc_all7, dc_all8)
+
+
+
+##compare count
+dc_all9_1 <- dc_all9 %>% group_by(Platform, transfrom) %>% count(transfrom) 
+
+#dc_all9_1
+
+ggplot(dc_all9_1, aes(x=Platform, y=n, fill = transfrom))  + geom_bar(stat="identity", color="black")
+
+
+###compare spend 
+####drop the order dc, focus on the new dcs? 
+#### for the new comers, are they drawed by the RBD, existed or transformed from other part? 
+
+
+```
+
+
+
+
+---
+# <font size = "6"> Convertion and Non-Convertion Customer Spend Compare
+```{r convert7, echo=FALSE, message=FALSE, warning=FALSE, fig.height=4, fig.width=11}
+       
+
+dc_all9 %>% group_by(Platform, transfrom) %>% dplyr::summarise(Sum = sum(TotalSpend)) %>% 
+  ggplot(aes(x=Platform, y=Sum, fill=transfrom)) + geom_bar(stat = "identity")
+
+###transformed are more generous 
+
+```
+
+```{r convert8, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+#dc_all9
+
+
+dc_all9_2 <- subset(dc_all, dc_all9$Monthly_Spend_Goal < 500000)
+
+dc_all9_3 <- subset(dc_all9_2,  as.numeric(dc_all9_2$Days_Live) < 7000 & as.numeric(dc_all9_2$Days_Live) >400)
+
+ltrans <- glm(as.factor(transfrom) ~ Subscription_Tire + Region +as.numeric(Days_Live) + as.numeric(Monthly_Spend_Goal) + Platform + Market, data = dc_all9, family = "binomial")
+
+#summary(ltrans)
+```
+
+
+---
+
+# <font size = "6"> Model Prepare, Outlier Dection
+# <font size = "4"> Drop monthly goal above 500000, days live above 7000 or below 400
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+box1 <- boxplot(dc_all9$Monthly_Spend_Goal)
+###drop monthly goal above 500000
+
+box2 <- boxplot(as.numeric(dc_all9$Days_Live))
+###drop days live about 7000 or below 400
+
+#gridExtra::grid.arrange(box1, box2)
+```
+
+---
+# <font size = "6"> Model 1
+```{r echo=FALSE, fig.height=5, fig.width=12, message=FALSE, warning=FALSE}
+
+ltrans1 <- glm(as.factor(transfrom) ~ Subscription_Tire + Region +as.numeric(Days_Live) + as.numeric(Monthly_Spend_Goal) + Platform + Market, data = dc_all9_3, family = "binomial")
+
+summary(ltrans1)
+
+```
+
+
+```{r convert9, echo=FALSE, message=FALSE, warning=FALSE}
+
+####new comer or lost
+### for new comer, explore are they attricted here for magazine or transformed from other overdrive products
+### for the lost, are they still with us in other products? 
+dc_2020new <- subset(dc_2020, !(CRID %in% dc_2019$CRID))
+dc_2020new
+dc_2020lost <- subset(dc_2019, !(CRID %in% dc_2020$CRID))
+#dc_2020lost
+dc_2021new <- subset(dc_2021, !(CRID %in% dc_2020$CRID))
+#dc_2021new
+dc_2021lost <- subset(dc_2020, !(CRID %in% dc_2021$CRID))
+#dc_2021lost
+```
+
+```{r convert10, echo=FALSE, message=FALSE, warning=FALSE}
+
+dc_2020new_1 <- dc_2020new %>% group_by(Platform) %>% dplyr::count(Platform) 
+
+#onlym2020_1
+
+dc_2021new_1 <- dc_2021new %>% group_by(Platform) %>% dplyr::count(Platform)
+
+#onlym2021_1
+
+ggplot() +
+  geom_line(data = dc_2020new_1, aes(x=Platform, y=n, group = 1), color = "red") +
+  geom_line(data = dc_2021new_1, aes(x=Platform, y=n, group =2), color = "blue")
+
+
+
+
+```
+
+
+
+```{r dataprocess3, echo=FALSE, message=FALSE, warning=FALSE}
+
+onlym2020 <- subset(dc_2020new, !(CRID %in% alld2020$CRID))
+
+#onlym2020
+###42 out of 350 of new comer here just for the magazine, implied 308 of them brought by other od service
+
+onlym2021 <- subset(dc_2021new, !(CRID %in% alld2021$CRID))
+
+#onlym2021
+##85 out of 720 of the new comer here just for the magazine, implied 635 of them transformed from other od service 
+```
+
+
+
+---
+# <font size = "6"> New customers that only come for Magazine 2020vs2021
+# <font size = "6"> 2020vs2021
+```{r new1, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+onlym2020_1 <- onlym2020 %>% group_by(Platform) %>% count(Platform) 
+
+#onlym2020_1
+
+onlym2021_1 <- onlym2021 %>% group_by(Platform) %>% count(Platform)
+
+#onlym2021_1
+
+ggplot() +
+  geom_line(data = onlym2020_1, aes(x=Platform, y=n, group = 1), color = "2020") +
+  geom_line(data = onlym2021_1, aes(x=Platform, y=n, group =2), color = "2021") +
+   scale_color_manual(values = c("aquamarine4","darkmagenta")) +
+    labs( y = "New DCs", x = "Platform")
+#  geom_point(data = data1, aes(x = clarity, y = m), color = "blue") + # must include argument label "data"
+#  geom_point(data = data2, aes(x = clarity, y = m))
+```
+
+
+---
+# <font size = "6"> New customers Spend, only for Magazine 
+# <font size = "6"> 2020 Spend, only for Magazine 
+
+```{r new2, echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=12}
+only2020_2 <- onlym2020 %>% group_by(Platform) %>% dplyr::summarise(TotalSpend = sum(TotalSpend))
+#only2020_2
+only2021_2 <- onlym2021 %>% group_by(Platform) %>% dplyr::summarise(TotalSpend = sum(TotalSpend))
+#only2021_2
+ ggplot() +
+geom_col(data = only2020_2, aes(x=Platform, y=TotalSpend), fill = "#8EC549")
+
+
+
+```
+
+---
+# <font size = "6"> New customers Spend, only for Magazine 
+# <font size = "6"> 2021 Spend, only for Magazine 
+
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+ggplot() +
+geom_col(data = only2021_2, aes(x=Platform, y=TotalSpend), fill = "#8EC549")
+
+```
+
+
+
+
+---
+<br /><br />
+# <font size = "6"> Magazine Lost Customers
+# <font size = "6"> 2020: 13 out of 13 still with us, they just cancel the magazine subscription
+# <font size = "6"> 2021: 22 out of 26 still with us, 4 of them not with us at all.
+```{r lost1, echo=FALSE, message=FALSE, warning=FALSE}
+stil2020_1 <- subset(dc_2020lost, CRID %in% alld2020$CRID)
+#stil2020_1
+###13 out of 13 still with us, they just cancel the magazine subscription
+stil2021_1 <- subset(dc_2021lost, CRID %in% alld2021$CRID)
+
+alllost <- subset(dc_2021lost, !(CRID %in% stil2021_1$CRID))
+#alllost
+###22 out of 26 still with us, 4 of them not with us at all.
+
+```
+
+---
+# <font size = "6"> Completely lost customers: 12748 12779 13038 2312
+# <font size = "6"> 12748: Izmir Institute of High Technology (TR)     1
+# <font size = "6"> 12779: Thunder Bay Public Library (CA)             3
+# <font size = "6"> 13038	: MBSA Majlis Bandaraya Shah Alam (MY)       1
+# <font size = "6"> 2312: York Public Library (ME)                     1
+
+
+
+
+
+
+---
+# Appendix
+#<font size = "6"> Account Level in Content Metrics
+# <font size = "6"> Exsiting and New Customers
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+cn1 <- odbcDriverConnect('driver={SQL Server};server=reportDB;database=sf_mirror;trusted_connection=true')
+
+ct1 <- sqlQuery(cn1,
+                    paste("
+SELECT DISTINCT rhp.Account__c
+, Migration_Date__c = CAST(rhp.Migration_Date__c AS DATE)
+, rhp.Pre_Migration_Status__c
+,	cm.Account_Name__c
+	, cm.Format_Class__c
+   ,Time_Frame =
+	   CASE WHEN  cm.Month__c IN ('July','August', 'September', 'October', 'November', 'December') AND Year__c = 2020 THEN 'Post-acquisition'
+		 WHEN  cm.Month__c IN ('January', 'February','March', 'April', 'May', 'June') AND Year__c = 2020 THEN 'Pre-acquisition'	
+		 WHEN  cm.Month__c IN('January', 'February','March', 'April', 'May', 'June')   AND Year__c = 2022 THEN 'Current'   END
+	, Total_Spend = SUM(cm.Total_Monthly_Content_Spend__c)
+FROM  sf_mirror.dbo.RBD_Historical_Product__c rhp
+LEFT JOIN sf_mirror.dbo.Content_Metrics__c cm ON rhp.Account__c = cm.Account_Name__c
+WHERE Format_Class__c like '%Magazine%'
+AND (cm.Year__c = 2020 OR cm.Year__c = 2022)
+GROUP BY  rhp.Account__c
+, CAST(rhp.Migration_Date__c AS DATE)
+, rhp.Pre_Migration_Status__c
+, cm.Account_Name__c
+	, cm.Format_Class__c
+   ,   CASE WHEN  cm.Month__c IN ('July','August', 'September', 'October', 'November', 'December') AND Year__c = 2020 THEN 'Post-acquisition'
+		 WHEN  cm.Month__c IN ('January', 'February','March', 'April', 'May', 'June') AND Year__c = 2020 THEN 'Pre-acquisition'	
+		 WHEN  cm.Month__c IN('January', 'February','March', 'April', 'May', 'June')   AND Year__c = 2022 THEN 'Current' END
+ORDER BY cm.Account_Name__c
+
+                          "))
+
+# head(ct1)
+
+# na.omit(ct1)
+
+#ct1 <- na.omit(ct1$Time_Frame)
+#ct1
+```
+
+
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+ct3 <- ct1 %>% dplyr::group_by(Time_Frame, Pre_Migration_Status__c)%>% dplyr::summarise(TotalSpend=sum(Total_Spend),)
+
+
+ggplot(ct3, aes_string(x = "Time_Frame", y="TotalSpend", fill="Pre_Migration_Status__c" )) +   geom_bar(stat = "identity", color="black") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+
+
+
+```
+
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+
+cn1 <- odbcDriverConnect('driver={SQL Server};server=reportDB;database=sf_mirror;trusted_connection=true')
+
+ct4_1 <- sqlQuery(cn1,
+                    paste("
+select Account_Name__c,
+TotalSpend = Sum(Total_Monthly_Content_Spend__c),
+TotalUnits = Sum(Total_Monthly_Units__c)
+ ,Time_Frame =
+	   CASE WHEN  Month__c IN ('July','August', 'September', 'October', 'November', 'December') AND Year__c = 2020 THEN 'Post-acquisition'
+		 WHEN  Month__c IN ('January', 'February','March', 'April', 'May', 'June') AND Year__c = 2020 THEN 'Pre-acquisition'	
+		 WHEN  Month__c IN('January', 'February','March', 'April', 'May', 'June')   AND Year__c = 2022 THEN 'Current'   END
+from sf_mirror.dbo.Content_Metrics__c
+where Format_Class__c like '%magazine%'
+AND (Year__c = 2020 OR Year__c = 2022)
+Group BY Account_Name__c,
+CASE WHEN  Month__c IN ('July','August', 'September', 'October', 'November', 'December') AND Year__c = 2020 THEN 'Post-acquisition'
+		 WHEN  Month__c IN ('January', 'February','March', 'April', 'May', 'June') AND Year__c = 2020 THEN 'Pre-acquisition'	
+		 WHEN  Month__c IN('January', 'February','March', 'April', 'May', 'June')   AND Year__c = 2022 THEN 'Current'   END
+
+                          "))
+
+
+ct4_1 <- na.omit(ct4_1)
+```
+
+
+```{r echo=FALSE}
+cn1 <- odbcDriverConnect('driver={SQL Server};server=reportDB;database=sf_mirror;trusted_connection=true')
+
+ct4_2 <- sqlQuery(cn1,
+                    paste("
+select Account_Name__c,
+TotalSpend = Sum(Total_Monthly_Content_Spend__c),
+TotalUnits = Sum(Total_Monthly_Units__c)
+ ,Time_Frame =
+	   CASE WHEN  Month__c IN ('July','August', 'September', 'October', 'November', 'December') AND Year__c = 2020 THEN 'Post-acquisition'
+		 WHEN  Month__c IN ('January', 'February','March', 'April', 'May', 'June') AND Year__c = 2020 THEN 'Pre-acquisition'	
+		 WHEN  Month__c IN('January', 'February','March', 'April', 'May', 'June')   AND Year__c = 2022 THEN 'Current'   END
+from sf_mirror.dbo.Content_Metrics__c
+where (Format_Class__c like '%eBook%' or Format_Class__c like '%Audiobook%')
+AND (Year__c = 2020 OR Year__c = 2022)
+Group BY Account_Name__c,
+CASE WHEN  Month__c IN ('July','August', 'September', 'October', 'November', 'December') AND Year__c = 2020 THEN 'Post-acquisition'
+		 WHEN  Month__c IN ('January', 'February','March', 'April', 'May', 'June') AND Year__c = 2020 THEN 'Pre-acquisition'	
+		 WHEN  Month__c IN('January', 'February','March', 'April', 'May', 'June')   AND Year__c = 2022 THEN 'Current'   END
+
+                          "))
+
+ct4_2 <- na.omit(ct4_2)
+
+
+```
+
+
+
+
+
+---
+# <font size = "6"> Magazine Spend VS Ebook&Audiobook Spend
+# <font size = "6"> Magazine Spend
+
+```{r echo=FALSE, fig.height=5, fig.width=12}
+ct5_1 <-ct4_1 %>% group_by(Time_Frame) %>% dplyr::summarise(TotalSpend=sum(TotalSpend))
+
+
+ggplot(ct5_1, aes_string(x = "Time_Frame", y="TotalSpend")) +   geom_bar(stat = "identity", color="black", fill = "#7fb1c8") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+
+```
+
+
+---
+# <font size = "6"> Magazine Spend VS Ebook&Audiobook Spend
+# <font size = "6"> Ebook&Audiobook Spend
+
+
+```{r echo=FALSE}
+
+ct5_2 <-ct4_2 %>% group_by(Time_Frame) %>% dplyr::summarise(TotalSpend=sum(TotalSpend))
+
+
+ggplot(ct5_2, aes_string(x = "Time_Frame", y="TotalSpend")) +   geom_bar(stat = "identity", color="black", fill = "#A7A9AC") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+```
+
+
+
+```{r echo=FALSE}
+###compare ct1 and ct6
+
+ct4_1$convert <- "No"
+
+
+for (i in 1:length(ct4_1$Account_Name__c)) {
+  if(any(ct4_1$Account_Name__c==ct4_2[i, "Account_Name__c"])){
+    ct4_1[i, "convert"] = "Yes"
+  } else {
+    ct4_1[i, "convert"] = "No"
+  }
+}
+
+#ct4_1
+
+```
+
+---
+# <font size = "6"> Magazine's Conversion to Ebook/Audiobook
+# <font size = "6"> Number of account 
+
+```{r echo=FALSE, fig.height=6, fig.width=12}
+
+
+ct7_1 <- ct4_1 %>% group_by(Time_Frame, convert) %>% dplyr::count(convert)
+
+#ct7_1
+
+ggplot(ct7_1, aes_string(x = "Time_Frame", y="n", fill="convert" )) +   geom_bar(stat = "identity", color="black") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "Total", x = "Time")+scale_fill_manual(values=c( "#7fb1c8","#f8b996","#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+
+
+```
+
+---
+# <font size = "6"> Magazine's Conversion to Ebook/Audiobook
+# <font size = "6"> Total Spend 
+
+
+```{r echo=FALSE, fig.height=6, fig.width=12, message=FALSE, warning=FALSE}
+
+
+ct6_1 <-ct4_1 %>% group_by(Time_Frame, convert)%>% dplyr::summarise(TotalSpend=sum(TotalSpend))
+
+
+ggplot(ct6_1, aes_string(x = "Time_Frame", y="TotalSpend", fill="convert" )) +   geom_bar(stat = "identity", color="black") +theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "TotalSpend", x = "year")+scale_fill_manual(values=c(  "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+
+
+```
+
+---
+# <font size = "6"> Retention Rate
+# <font size = "6"> Current VS POST
+
+```{r echo=FALSE, fig.height=6, fig.width=12}
+###magazine retention in Account level
+
+ct4_1_pre <- subset(ct4_1, ct4_1$Time_Frame =="Pre-acquisition")
+ct4_1_pos <- subset(ct4_1, ct4_1$Time_Frame =="Post-acquisition")
+ct4_1_cur <- subset(ct4_1, ct4_1$Time_Frame =="Current")
+
+ct4_1pos1 <- subset(ct4_1_pre, (ct4_1_pre$Account_Name__c %in% ct4_1_pos$Account_Name__c))
+ct4_1cur1 <- subset(ct4_1_pos, (ct4_1_pos$Account_Name__c %in% ct4_1_cur$Account_Name__c))
+
+
+
+ct4_retention <- data.frame( no = c("Post","Current"),
+                             retention = c(length(ct4_1pos1$Time_Frame)/length(ct4_1_pre$Time_Frame), length(ct4_1cur1$Time_Frame)/length(ct4_1_pos$Time_Frame))
+)
+
+
+
+ggplot(ct4_retention, aes(x=no, y=retention)) + 
+  geom_bar(stat = "identity", color="black", fill="#4f8e9c") + 
+  theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "Retention Rate", x = "Time")+scale_fill_manual(values=c( "#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+  
+
+```
+
+
+---
+# <font size = "6"> Activity Rate
+# Activity Rate in account level is pretty low
+
+```{r echo=FALSE, fig.height=6, fig.width=12}
+###magazine retention in Account level
+
+ct4_1_preA <- subset(ct4_1_pre, ct4_1_pre$TotalSpend >0)
+ct4_1_posA <- subset(ct4_1_pos, ct4_1_pos$TotalSpend >0)
+ct4_1_curA <- subset(ct4_1_cur, ct4_1_cur$TotalSpend >0)
+
+
+ct4_1pos1 <- subset(ct4_1_pre, (ct4_1_pre$Account_Name__c %in% ct4_1_pos$Account_Name__c))
+ct4_1cur1 <- subset(ct4_1_pos, (ct4_1_pos$Account_Name__c %in% ct4_1_cur$Account_Name__c))
+
+
+
+ct4_activity <- data.frame( no = c("Pre", "Post","Current"),
+                             active = c(length(ct4_1_preA$Time_Frame)/length(ct4_1_pre$Time_Frame),length(ct4_1_posA$Time_Frame)/length(ct4_1_pos$Time_Frame), length(ct4_1_curA$Time_Frame)/length(ct4_1_cur$Time_Frame))
+)
+
+
+
+ggplot(ct4_activity, aes(x=no, y=active)) + 
+  geom_bar(stat = "identity", color="black", fill="#4f8e9c") + 
+  theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "Active Rate", x = "Time")+scale_fill_manual(values=c( "#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+  
+
+```
+
+
+
+---
+# <font size = "6"> New Comers
+# <font size = "6"> Current VS POST
+# Current is new comer for 2 years
+
+```{r echo=FALSE, fig.height=6, fig.width=12}
+ct4_1new1 <- subset(ct4_1_pos, !(ct4_1_pos$Account_Name__c %in% ct4_1_pre$Account_Name__c))
+
+ct4_1new2 <- subset(ct4_1_cur, !(ct4_1_cur$Account_Name__c %in% ct4_1_pos$Account_Name__c))
+
+
+ct4_newcomer <- data.frame( no = c("Post","Current"),
+                             new = c(length(ct4_1new1$Time_Frame), length(ct4_1new2$Time_Frame))
+)
+
+
+
+ggplot(ct4_newcomer, aes(x=no, y=new)) + 
+  geom_bar(stat = "identity", color="black", fill="#507f94") +
+   theme_classic(base_size=20)+ theme(legend.title= element_blank()) + labs( y = "New Comer", x = "Time")+scale_fill_manual(values=c( "#a3f896","#A7A9AC", "#EE523B", "#231F20", "#507f94", "#8f3122", "#4f8e9c"))+ scale_y_continuous(labels = scales::comma)+ theme(legend.position="bottom")
+
+```
+
